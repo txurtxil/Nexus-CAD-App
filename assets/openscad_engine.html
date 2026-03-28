@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Motor CAD WASM</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; background-color: #0a0a0a; overflow: hidden; font-family: monospace; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        #overlay {
+            position: absolute; bottom: 10px; left: 10px;
+            background: rgba(0, 255, 0, 0.1); border: 1px solid #00ff00;
+            color: #00ff00; padding: 8px 12px; border-radius: 4px;
+            font-size: 12px; pointer-events: none; text-shadow: 0 0 2px #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="overlay">Módulo 3D Inicializado. Esperando malla...</div>
+
+    <script>
+        let scene, camera, renderer, controls, currentMesh;
+        const overlay = document.getElementById('overlay');
+
+        // 1. INICIALIZAR ENTORNO CAD
+        function initCAD() {
+            const container = document.getElementById('canvas-container');
+            
+            // Escena
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0a0a0a);
+
+            // Cámara
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(50, 50, 50);
+
+            // Renderizador
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Controles Táctiles/Ratón (OrbitControls)
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.1;
+
+            // Iluminación (Estilo Estudio CAD)
+            const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
+            scene.add(ambientLight);
+            
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight1.position.set(100, 100, 50);
+            scene.add(dirLight1);
+            
+            const dirLight2 = new THREE.DirectionalLight(0x88bbff, 0.5);
+            dirLight2.position.set(-100, -100, -50);
+            scene.add(dirLight2);
+
+            // Rejilla y Ejes (Cuadrícula de diseño)
+            const gridHelper = new THREE.GridHelper(100, 50, 0x444444, 0x222222);
+            scene.add(gridHelper);
+            
+            const axesHelper = new THREE.AxesHelper(20);
+            scene.add(axesHelper);
+
+            animate();
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update(); // Necesario para el Damping de los controles táctiles
+            renderer.render(scene, camera);
+        }
+
+        // Manejar redimensionamiento (giro de pantalla del móvil)
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // 2. PUENTE CON FLET (Recepción de Código)
+        function processOpenScad(code) {
+            overlay.innerHTML = "Compilando... <br><i>(El motor WASM real procesará esto)</i>";
+            
+            // Limpiar malla anterior
+            if(currentMesh) {
+                scene.remove(currentMesh);
+                currentMesh.geometry.dispose();
+                currentMesh.material.dispose();
+            }
+
+            // SIMULADOR: Dependiendo del código, pintamos una geometría u otra.
+            // En el futuro, aquí inyectaremos los datos parseados del WASM.
+            let geometry;
+            if (code.toLowerCase().includes("sphere")) {
+                geometry = new THREE.SphereGeometry(15, 32, 16);
+                overlay.innerHTML = "WASM Simulación: Esfera generada.";
+            } else if (code.toLowerCase().includes("cylinder")) {
+                geometry = new THREE.CylinderGeometry(10, 10, 20, 32);
+                overlay.innerHTML = "WASM Simulación: Cilindro generado.";
+            } else {
+                geometry = new THREE.BoxGeometry(20, 20, 20);
+                overlay.innerHTML = "WASM Simulación: Cubo generado.";
+            }
+
+            // Material CAD (Verde brillante con un poco de brillo)
+            const material = new THREE.MeshPhongMaterial({ 
+                color: 0x00e676, 
+                specular: 0x111111,
+                shininess: 30,
+                flatShading: false
+            });
+
+            currentMesh = new THREE.Mesh(geometry, material);
+            currentMesh.position.y = 10; // Levantar sobre la rejilla
+            scene.add(currentMesh);
+        }
+
+        // Iniciar al cargar
+        initCAD();
+    </script>
+</body>
+</html>
