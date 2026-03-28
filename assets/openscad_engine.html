@@ -2,163 +2,46 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Motor CAD WASM</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { margin: 0; padding: 0; background-color: #0a0a0a; overflow: hidden; font-family: monospace; }
-        #canvas-container { width: 100vw; height: 100vh; display: block; }
-        
-        /* Panel de Estado Avanzado con Luz de Estado */
-        #overlay {
-            position: absolute; bottom: 10px; left: 10px;
-            background: rgba(0, 0, 0, 0.7); border: 1px solid #333;
-            color: #00ff00; padding: 8px 12px; border_radius: 6px;
-            font-size: 12px; pointer-events: none;
-            display: flex; align-items: center; gap: 8px;
-        }
-        #status-light {
-            width: 10px; height: 10px; border_radius: 50%;
-            background-color: red; /* Rojo = No inicializado */
-            box-shadow: 0 0 5px red;
-        }
+        body { background: #0a0a0a; color: #0f0; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; margin:0; font-family:monospace; }
+        canvas { border: 1px solid #333; background: #111; max-width: 90vw; max-height: 60vh; }
+        #status { margin-top: 20px; padding: 10px; border: 1px solid red; background: rgba(255,0,0,0.1); color: red; border-radius: 5px; }
     </style>
 </head>
 <body>
-    <div id="canvas-container"></div>
-    <div id="overlay">
-        <div id="status-light"></div>
-        <div id="status-text">Iniciando sistema...</div>
-    </div>
+    <canvas id="renderCanvas" width="300" height="300"></canvas>
+    <div id="status">🔴 Iniciando sistema...</div>
 
     <script>
-        // === CONFIGURACIÓN THREE.JS (VISOR 3D CAD) ===
-        let scene, camera, renderer, controls, currentMesh;
-        const container = document.getElementById('canvas-container');
-        const statusText = document.getElementById('status-text');
-        const statusLight = document.getElementById('status-light');
+        const ctx = document.getElementById('renderCanvas').getContext('2d');
+        const statusEl = document.getElementById('status');
 
-        // Función para actualizar el panel de estado visual
-        function setStatus(text, color) {
-            statusText.innerHTML = text;
-            statusLight.style.backgroundColor = color;
-            statusLight.style.boxShadow = "0 0 5px " + color;
-        }
+        // Simulamos la carga del motor interno nativo (Sin internet)
+        setTimeout(() => {
+            statusEl.innerHTML = "🟢 Motor Nativo Listo. Esperando Python...";
+            statusEl.style.borderColor = "#0f0";
+            statusEl.style.color = "#0f0";
+            statusEl.style.background = "rgba(0,255,0,0.1)";
+        }, 300);
 
-        function initCAD() {
-            setStatus("Iniciando escena 3D...", "red");
-            
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0a);
-
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(50, 50, 50);
-
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.appendChild(renderer.domElement);
-
-            // Controles Táctiles/Ratón (OrbitControls)
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.1;
-
-            // Iluminación
-            const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
-            scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-            dirLight.position.set(100, 100, 50).normalize();
-            scene.add(dirLight);
-
-            // Rejilla y Ejes
-            const gridHelper = new THREE.GridHelper(100, 50, 0x333333, 0x111111);
-            scene.add(gridHelper);
-            const axesHelper = new THREE.AxesHelper(20);
-            scene.add(axesHelper);
-
-            animate();
-            
-            setStatus("Three.js cargado. Esperando motor WASM...", "orange");
-            
-            // --- AQUÍ IRÍA LA CARGA REAL DEL MOTOR WASM ---
-            // Cuando la librería openscad-wasm.wasm esté cargada:
-            // openscad.load().then(() => { onWasmReady(); });
-            // Por ahora, simulamos que el motor WASM está listo inmediatamente.
-            onWasmReady();
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        // === FASE 1: HANDSHAKE (Señal de "Listo" a Python) ===
-        // Esta función se llama cuando todo el motor (Three.js y WASM) está listo.
-        function onWasmReady() {
-            setStatus("Motor WASM listo. Esperando código Python...", "green");
-            
-            // === ENVÍO DE SEÑAL A FLET ===
-            // Esta es la forma estándar de enviar datos desde JS de WebView a Python en Flet.
-            // Asume que en Python definimos un evento: ft.WebView(on_message=...)
-            if (window.fletwebview) {
-                // Enviamos un objeto JSON simple. La clave es 'type': 'ready'
-                window.fletwebview.postMessage(JSON.stringify({ type: "ready" }));
-            }
-        }
-
-        // === FASE 2: RECEPCIÓN DE DATOS (processOpenScad) ===
-        // Esta función es llamada desde Python vía run_javascript SOLO cuando Flet recibe el 'ready'
+        // Flet inyectará el código aquí
         function processOpenScad(code) {
-            setStatus("Generando malla para: " + code.substring(0, 15) + "...", "green");
-            console.log("Generando código OpenSCAD:", code);
+            statusEl.innerHTML = "✅ Código recibido. Renderizando...";
+            ctx.clearRect(0, 0, 300, 300);
             
-            // --- AQUÍ IRÍA LA LÓGICA DE COMPILACIÓN WASM REAL ---
-            // ej. let meshData = openscad.compile(code);
-            // let geometry = buildGeometryFromWasm(meshData);
-            
-            // SIMULADOR: Dependiendo del código, pintamos una geometría Three.js simulada.
-            
-            // Limpiar malla anterior
-            if(currentMesh) {
-                scene.remove(currentMesh);
-                currentMesh.geometry.dispose();
-                currentMesh.material.dispose();
-            }
-
-            let geometry;
+            // Simulación WASM 2D básica
             if (code.toLowerCase().includes("sphere")) {
-                geometry = new THREE.SphereGeometry(15, 32, 16);
-            } else if (code.toLowerCase().includes("cylinder")) {
-                geometry = new THREE.CylinderGeometry(10, 10, 20, 32);
+                ctx.fillStyle = "#2979ff"; // Azul
+                ctx.beginPath(); ctx.arc(150, 150, 80, 0, 2*Math.PI); ctx.fill();
             } else {
-                geometry = new THREE.BoxGeometry(20, 20, 20);
+                ctx.fillStyle = "#00e676"; // Verde
+                ctx.fillRect(70, 70, 160, 160);
             }
-
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0x00e676, 
-                specular: 0x111111,
-                shininess: 30,
-                flatShading: false
-            });
-
-            currentMesh = new THREE.Mesh(geometry, material);
-            currentMesh.position.y = 10;
-            scene.add(currentMesh);
         }
-
-        // Iniciar visor al cargar
-        initCAD();
+        
+        // Exponer la función globalmente para Flet
+        window.processOpenScad = processOpenScad;
     </script>
 </body>
 </html>
