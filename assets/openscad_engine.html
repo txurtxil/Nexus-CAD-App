@@ -2,79 +2,98 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { margin: 0; padding: 0; background: #0a0a0a; color: #0f0; overflow: hidden; font-family: monospace; }
-        canvas { display: block; }
-        #overlay { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.8); padding: 10px 15px; border: 1px solid #00e676; border-radius: 5px; pointer-events: none; text-shadow: 0 0 5px #00e676; font-weight: bold; }
+        body { margin: 0; background: #000; font-family: monospace; overflow: hidden; display: flex; flex-direction: column; height: 100vh; }
+        /* Mitad superior: El Visor */
+        #visor-container { flex: 1; position: relative; border-bottom: 2px solid #00ff00; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        /* Mitad inferior: La Consola de Diagnóstico */
+        #log-container { flex: 1; background: #0a0a0a; color: #00ff00; padding: 10px; overflow-y: auto; font-size: 11px; }
+        .log-msg { margin-bottom: 4px; border-bottom: 1px dashed #333; padding-bottom: 4px; word-wrap: break-word; }
+        .error { color: #ff3333; font-weight: bold; }
+        .success { color: #00e676; }
     </style>
 </head>
 <body>
-    <canvas id="cvs"></canvas>
-    <div id="overlay">Iniciando...</div>
+    <div id="visor-container"><canvas id="cvs"></canvas></div>
+    <div id="log-container"></div>
+
     <script>
-        const canvas = document.getElementById('cvs');
-        const ctx = canvas.getContext('2d');
-        const overlay = document.getElementById('overlay');
-
-        // FIX CRÍTICO: Usar el tamaño de la ventana del móvil, no de contenedores invisibles
-        function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            draw(); 
-        }
-        window.addEventListener('resize', resize);
-
-        function decodeB64(str) {
-            return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+        const logBox = document.getElementById('log-container');
+        
+        // Función para imprimir en la pantalla del móvil
+        function logToScreen(msg, isError=false) {
+            const p = document.createElement('div');
+            p.className = 'log-msg ' + (isError ? 'error' : (msg.includes('✓') ? 'success' : ''));
+            p.innerText = '> ' + msg;
+            logBox.appendChild(p);
+            logBox.scrollTop = logBox.scrollHeight;
         }
 
-        let currentCode = "";
+        // INTERCEPTOR DE CUALQUIER FALLO FATAL DE ANDROID
+        window.onerror = function(msg, url, line) {
+            logToScreen('CRASH FATAL: ' + msg + ' (Línea ' + line + ')', true);
+            return false;
+        };
 
-        function drawFractalTree(x, y, len, angle, depth) {
-            if (depth === 0) return;
-            ctx.beginPath(); ctx.moveTo(x, y);
-            const x2 = x + Math.cos(angle) * len;
-            const y2 = y + Math.sin(angle) * len;
-            ctx.lineTo(x2, y2);
-            ctx.strokeStyle = depth < 3 ? '#00e676' : '#8d6e63';
-            ctx.lineWidth = depth; ctx.stroke();
-            drawFractalTree(x2, y2, len * 0.75, angle - 0.3, depth - 1);
-            drawFractalTree(x2, y2, len * 0.7, angle + 0.4, depth - 1);
-        }
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (!currentCode) return;
-            
-            if (currentCode.toLowerCase().includes("branch") || currentCode.toLowerCase().includes("tree")) {
-                // Dibujar el árbol desde la parte inferior de la pantalla
-                drawFractalTree(canvas.width / 2, canvas.height - 50, canvas.height / 3.5, -Math.PI / 2, 8);
-            } else if (currentCode.toLowerCase().includes("sphere")) {
-                ctx.fillStyle = "#2979ff"; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 50, 0, Math.PI * 2); ctx.fill();
-            } else {
-                ctx.fillStyle = "#00e676"; ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
-            }
-        }
-
-        // LA INYECCIÓN
-        const b64_payload = "__NEXUS_PAYLOAD__";
+        logToScreen('Paso 1: Motor de diagnóstico JS arrancado.');
 
         try {
-            if (b64_payload !== "__NEXUS_PAYLOAD__" && b64_payload.trim() !== "") {
-                currentCode = decodeB64(b64_payload);
-                overlay.innerHTML = "✓ RENDERIZADO COMPLETADO";
-                resize(); // Dispara el dibujo inmediatamente
-            } else {
-                overlay.innerHTML = "Esperando código...";
-                overlay.style.borderColor = "orange";
-                overlay.style.color = "orange";
-                resize();
+            const canvas = document.getElementById('cvs');
+            const ctx = canvas.getContext('2d');
+            logToScreen('Paso 2: Canvas 2D capturado.');
+
+            function resize() {
+                canvas.width = canvas.parentElement.clientWidth || 300;
+                canvas.height = canvas.parentElement.clientHeight || 300;
+                logToScreen('Paso 3: Canvas redimensionado a ' + canvas.width + 'x' + canvas.height);
             }
-        } catch(e) {
-            overlay.innerHTML = "ERROR: " + e;
-            overlay.style.borderColor = "red";
-            overlay.style.color = "red";
+            window.addEventListener('resize', resize);
+            resize();
+
+            function decodeB64(str) {
+                return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+            }
+
+            function drawFractalTree(x, y, len, angle, depth) {
+                if (depth === 0) return;
+                ctx.beginPath(); ctx.moveTo(x, y);
+                const x2 = x + Math.cos(angle) * len;
+                const y2 = y + Math.sin(angle) * len;
+                ctx.lineTo(x2, y2);
+                ctx.strokeStyle = depth < 3 ? '#00e676' : '#8d6e63';
+                ctx.lineWidth = depth; ctx.stroke();
+                drawFractalTree(x2, y2, len * 0.75, angle - 0.3, depth - 1);
+                drawFractalTree(x2, y2, len * 0.7, angle + 0.4, depth - 1);
+            }
+
+            // EL PUENTE (Python inyectará aquí)
+            const payload = "__NEXUS_PAYLOAD__";
+            logToScreen('Paso 4: Leyendo inyección. Longitud: ' + payload.length + ' chars');
+
+            if (payload !== "__NEXUS_PAYLOAD__" && payload.trim() !== "") {
+                logToScreen('Paso 5: Intentando decodificar Base64...');
+                const code = decodeB64(payload);
+                logToScreen('✓ Paso 6: Decodificación exitosa. Código recibido.');
+                
+                logToScreen('Paso 7: Iniciando motor de renderizado...');
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                if (code.toLowerCase().includes("branch") || code.toLowerCase().includes("tree")) {
+                    drawFractalTree(canvas.width / 2, canvas.height - 20, canvas.height / 3.5, -Math.PI / 2, 8);
+                    logToScreen('✓ Paso 8: Árbol fractal dibujado en pantalla.');
+                } else {
+                    ctx.fillStyle = "#00e676"; ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
+                    logToScreen('✓ Paso 8: Cubo dibujado en pantalla.');
+                }
+            } else {
+                logToScreen('Esperando que Python inyecte el código OpenSCAD...');
+            }
+
+        } catch(error) {
+            logToScreen('EXCEPCIÓN ATRAPADA: ' + error.message, true);
         }
     </script>
 </body>
