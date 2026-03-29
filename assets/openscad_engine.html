@@ -6,8 +6,8 @@
     <style>
         body { margin: 0; background: #000; display: flex; flex-direction: column; height: 100vh; font-family: monospace; }
         #status-bar { background: #111; border-bottom: 2px solid #333; padding: 15px; display: flex; align-items: center; }
-        #indicator { width: 15px; height: 15px; border-radius: 50%; background: red; margin-right: 15px; box-shadow: 0 0 10px red; }
-        #status-text { color: #fff; font-size: 16px; font-weight: bold; }
+        #indicator { width: 15px; height: 15px; border-radius: 50%; background: #00ff00; margin-right: 15px; box-shadow: 0 0 10px #00ff00; }
+        #status-text { color: #00ff00; font-size: 16px; font-weight: bold; }
         #console { background: #050505; color: #00e676; padding: 15px; flex-grow: 1; overflow-y: auto; font-size: 12px; white-space: pre-wrap; z-index: 10; }
         canvas { position: absolute; bottom: 0; right: 0; width: 100%; height: 60%; opacity: 0.9; pointer-events: none; z-index: 1; }
     </style>
@@ -15,20 +15,16 @@
 <body>
     <div id="status-bar">
         <div id="indicator"></div>
-        <div id="status-text">● ESPERANDO DATOS...</div>
+        <div id="status-text">● RENDERIZADO COMPLETADO</div>
     </div>
-    <div id="console">Motor de renderizado inicializado.
-Esperando inyección segura desde Python...</div>
+    <div id="console"></div>
     <canvas id="cvs"></canvas>
 
     <script>
-        const indicator = document.getElementById('indicator');
-        const statusText = document.getElementById('status-text');
         const consoleBox = document.getElementById('console');
         const canvas = document.getElementById('cvs');
         const ctx = canvas.getContext('2d');
 
-        // Ajuste dinámico del Canvas
         function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight * 0.6;
@@ -36,14 +32,12 @@ Esperando inyección segura desde Python...</div>
         window.addEventListener('resize', resize);
         resize();
 
-        // 1. Decodificador Seguro (Evita que los comentarios // rompan el código)
         function decodeB64(str) {
             return decodeURIComponent(atob(str).split('').map(c => 
                 '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
             ).join(''));
         }
 
-        // Función matemática para dibujar tu árbol
         function drawFractalTree(x, y, len, angle, depth) {
             if (depth === 0) return;
             ctx.beginPath(); ctx.moveTo(x, y);
@@ -56,36 +50,33 @@ Esperando inyección segura desde Python...</div>
             drawFractalTree(x2, y2, len * 0.7, angle + 0.4, depth - 1);
         }
 
-        // 2. PUENTE PRINCIPAL
-        window.processOpenScad = function(b64_code) {
-            try {
-                const code = decodeB64(b64_code);
-                
-                // Éxito visual
-                indicator.style.background = '#00ff00';
-                indicator.style.boxShadow = '0 0 15px #00ff00';
-                statusText.innerHTML = "COMPILACIÓN EXITOSA";
-                statusText.style.color = '#00ff00';
-                
-                // Mostrar el código recibido tal cual
-                consoleBox.innerHTML = "--- CÓDIGO RECIBIDO INTACTO ---\n\n" + code + "\n\n--- INICIANDO RENDER ---";
+        // ==========================================================
+        // LA MAGIA: PYTHON REEMPLAZARÁ ESTA LÍNEA EXACTA
+        const b64_payload = "__NEXUS_PAYLOAD__";
+        // ==========================================================
 
-                // Dibujar
+        try {
+            if (b64_payload !== "__NEXUS_PAYLOAD__" && b64_payload.trim() !== "") {
+                const code = decodeB64(b64_payload);
+                consoleBox.innerHTML = "--- CÓDIGO INCORPORADO CON ÉXITO ---\n\n" + code;
+                
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 if (code.toLowerCase().includes("branch") || code.toLowerCase().includes("tree")) {
-                    consoleBox.innerHTML += "\n> Módulo de Árbol detectado. Generando fractal...";
+                    consoleBox.innerHTML += "\n\n> Módulo fractal detectado. Generando...";
                     drawFractalTree(canvas.width / 2, canvas.height, canvas.height / 3.5, -Math.PI / 2, 8);
                 } else {
                     ctx.fillStyle = "#00e676";
                     ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
                 }
-
-            } catch (e) {
-                indicator.style.background = 'red';
-                statusText.innerHTML = "ERROR CRÍTICO";
-                consoleBox.innerHTML = "Error decodificando payload:\n" + e.toString();
+            } else {
+                consoleBox.innerHTML = "Esperando código...";
+                document.getElementById('indicator').style.background = 'orange';
+                document.getElementById('status-text').style.color = 'orange';
+                document.getElementById('status-text').innerHTML = "● EN ESPERA";
             }
-        };
+        } catch(e) {
+            consoleBox.innerHTML = "Error interno de renderizado:\n" + e;
+        }
     </script>
 </body>
 </html>
