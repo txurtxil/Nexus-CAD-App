@@ -66,10 +66,10 @@ def main(page: ft.Page):
             padding=10, expand=True, bgcolor="#0a0a0a"
         )
 
-        # Nueva pantalla del Visor sin el WebView defectuoso
+        # FIX CRÍTICO ESTÉTICO: Cambiado el icono por uno universal
         viewer_container = ft.Container(
             content=ft.Column([
-                ft.Icon(ft.icons.VIEW_IN_AR_ROUNDED, size=80, color="blue400"),
+                ft.Icon(ft.icons.OPEN_IN_BROWSER, size=80, color="blue400"),
                 ft.Text("Malla 3D Generada", color="white", size=20, weight="bold"),
                 ft.Text("El visor 3D se ejecutará en pantalla completa\ncon aceleración por hardware.", text_align="center", color="grey500"),
                 ft.Container(height=20),
@@ -98,7 +98,6 @@ def main(page: ft.Page):
                 
                 LATEST_HTML = template.replace("__NEXUS_PAYLOAD__", clean_b64)
                 
-                # LA TÉCNICA MAESTRA: Lanzar en el motor nativo del dispositivo
                 page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/?t={time.time()}")
                 
                 switch(1)
