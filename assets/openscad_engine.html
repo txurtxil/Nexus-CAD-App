@@ -3,144 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Motor CAD WASM</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
     <style>
-        body { margin: 0; padding: 0; background-color: #0a0a0a; overflow: hidden; font-family: monospace; }
-        #canvas-container { width: 100vw; height: 100vh; display: block; }
-        
-        /* Panel de Estado Táctil Avanzado */
-        #overlay {
-            position: absolute; bottom: 10px; left: 10px;
-            background: rgba(0, 0, 0, 0.7); border: 1px solid #333;
-            color: #00ff00; padding: 8px 12px; border_radius: 6px;
-            font-size: 12px; pointer-events: none; text-shadow: 0 0 2px #000;
-        }
+        body { margin: 0; padding: 0; background: #0a0a0a; color: #00ff00; overflow: hidden; font-family: monospace; }
+        #container { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+        #canvas-holder { flex-grow: 1; display: flex; justify-content: center; align-items: center; background: #111; border: 1px solid #1a1a1a; margin: 5px; border-radius: 8px; }
+        canvas { display: block; image-rendering: pixelated; }
+        #state-panel { background: #1a1a1a; border-top: 1px solid #333; padding: 12px; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+        #state-indicator { width: 12px; height: 12px; border-radius: 50%; background: red; box-shadow: 0 0 5px red; }
     </style>
 </head>
 <body>
-    <div id="canvas-container"></div>
-    <div id="overlay">Cargando Three.js...</div>
+    <div id="container">
+        <div id="canvas-holder"><canvas id="cvs"></canvas></div>
+        <div id="state-panel">
+            <div id="state-indicator"></div>
+            <div id="state-text">● VISOR: Esperando datos...</div>
+        </div>
+    </div>
 
     <script>
-        // === CONFIGURACIÓN THREE.JS (VISOR 3D CAD) ===
-        let scene, camera, renderer, controls, currentMesh;
-        const container = document.getElementById('canvas-container');
-        const overlay = document.getElementById('overlay');
+        const canvas = document.getElementById('cvs');
+        const ctx = canvas.getContext('2d');
+        const stateIndicator = document.getElementById('state-indicator');
+        const stateText = document.getElementById('state-text');
+        
+        function resize() {
+            canvas.width = canvas.parentElement.clientWidth - 20;
+            canvas.height = canvas.parentElement.clientHeight - 20;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
-        function initCAD() {
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x0a0a0a); // Fondo oscuro CAD
-
-            // === FIX CRÍTICO: CÁMARA CAD CORREGIDA ===
-            // image_10.png/image_11.png demostraban que la cámara estaba mal.
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            
-            // Posicionar cámara para vista isométrica CAD inicial
-            camera.position.set(50, 50, 50); 
-            
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            // Ajustar pixel ratio para pantallas de alto DPI nativas de Android
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.appendChild(renderer.domElement);
-
-            // Controles Táctiles/Ratón (OrbitControls)
-            // image_3.png demostraba OrbitControls en negro. Funciona táctil obligatoriamente.
-            controls = new THREE.OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true; // Efecto suavizado al soltar
-            controls.dampingFactor = 0.1;
-            
-            // Apuntar cámara al centro de geometría simulada (0,0,0)
-            controls.target.set(0, 0, 0); 
-
-            // Iluminación
-            const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
-            scene.add(ambientLight);
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
-            dirLight.position.set(100, 100, 50).normalize();
-            scene.add(dirLight);
-
-            // Rejilla y Ejes approved by CAD standards
-            const gridHelper = new THREE.GridHelper(100, 50, 0x333333, 0x111111);
-            scene.add(gridHelper);
-            const axesHelper = new THREE.AxesHelper(20);
-            scene.add(axesHelper);
-
-            animate();
-            
-            // FASE FINAL: Three.js cargado, ahora implementamos el Handshake
-            overlay.innerHTML = "Three.js Listo. Esperando Malla...";
-            onViewerReady();
+        function decodeB64(str) {
+            return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
         }
 
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update(); // Necesario para el Damping de OrbitControls táctiles
-            renderer.render(scene, camera);
+        function drawFractalTree(x, y, len, angle, depth) {
+            if (depth === 0) return;
+            ctx.beginPath(); ctx.moveTo(x, y);
+            const x2 = x + Math.cos(angle) * len;
+            const y2 = y + Math.sin(angle) * len;
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = depth < 3 ? '#00e676' : '#8d6e63'; 
+            ctx.lineWidth = depth; ctx.stroke();
+            drawFractalTree(x2, y2, len * 0.75, angle - 0.3, depth - 1);
+            drawFractalTree(x2, y2, len * 0.7, angle + 0.4, depth - 1);
         }
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        // PYTHON INYECTARÁ EL CÓDIGO AQUÍ:
+        const b64_payload = "__NEXUS_PAYLOAD__";
 
-        // === FASE 1: PUENTE DE HANDSHAKE (Visor -> Python) ===
-        // Esta función se llama cuando Three.js está completamente listo táctilmente.
-        function onViewerReady() {
-            // === ENVÍO DE SEÑAL A FLET ===
-            // Esta es la forma técnica de enviar datos desde JS de WebView a Python en Flet.
-            if (window.fletwebview) {
-                window.fletwebview.postMessage("viewer_ready");
-            }
-        }
+        try {
+            if (b64_payload !== "__NEXUS_PAYLOAD__" && b64_payload.trim() !== "") {
+                const code = decodeB64(b64_payload);
+                stateIndicator.style.background = '#00ff00';
+                stateIndicator.style.boxShadow = '0 0 10px #00ff00';
+                stateText.innerHTML = "● VISOR: Objeto generado.";
+                stateText.style.color = '#00ff00';
 
-        // === FASE 2: RECEPCIÓN DE DATOS (run_javascriptconfirmed by image_11.png) ===
-        // Esta función es llamada desde Python SOLO cuando Flet recibe el 'viewer_ready'
-        function processOpenScad(code) {
-            overlay.innerHTML = "Generando malla para: " + code.substring(0, 15) + "...";
-            console.log("Generando código OpenSCAD:", code);
-            
-            // --- AQUÍ IRÍA LA INTEGRACIÓN REAL CON EL MOTOR WASM (ej. openscad-wasm) ---
-            // Por ahora, simulamos que el motor WASM está listo inmediatamente.
-            // Dependiendo del código, pintamos una geometría Three.js simulada táctil obligatoria.
-            
-            // Limpiar malla anterior si existe
-            if(currentMesh) {
-                scene.remove(currentMesh);
-                currentMesh.geometry.dispose();
-                currentMesh.material.dispose();
-            }
-
-            // SIMULADOR: Dependiendo del código, pintamos una geometría u otra obligatoria tactics.
-            let geometry;
-            if (code.toLowerCase().includes("sphere")) {
-                geometry = new THREE.SphereGeometry(15, 32, 16);
-            } else if (code.toLowerCase().includes("cylinder")) {
-                geometry = new THREE.CylinderGeometry(10, 10, 20, 32);
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                if (code.toLowerCase().includes("branch") || code.toLowerCase().includes("tree")) {
+                    drawFractalTree(canvas.width / 2, canvas.height, canvas.height / 3.5, -Math.PI / 2, 8);
+                } else if (code.toLowerCase().includes("sphere")) {
+                    ctx.fillStyle = "#2979ff"; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 50, 0, Math.PI * 2); ctx.fill();
+                } else {
+                    ctx.fillStyle = "#00e676"; ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
+                }
             } else {
-                geometry = new THREE.BoxGeometry(20, 20, 20); // Cubo CAD Tactics
+                stateIndicator.style.background = 'orange';
+                stateIndicator.style.boxShadow = '0 0 5px orange';
+                stateText.innerHTML = "● VISOR: Esperando código...";
+                stateText.style.color = 'orange';
             }
-
-            // Material Tactics approved Tactics
-            const material = new THREE.MeshPhongMaterial({ 
-                color: 0x00e676, 
-                specular: 0x111111,
-                shininess: 30,
-                flatShading: false
-            });
-
-            currentMesh = new THREE.Mesh(geometry, material);
-            currentMesh.position.y = 10; // Levantar sobre la rejilla approved
-            scene.add(currentMesh);
+        } catch(e) {
+            stateIndicator.style.background = 'red';
+            stateText.innerHTML = "ERROR: " + e.toString();
         }
-
-        // Iniciar visor al cargar obligatory
-        initCAD();
     </script>
 </body>
 </html>
