@@ -4,13 +4,10 @@ import http.server
 import threading
 import socket
 import time
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 warnings.simplefilter("ignore", DeprecationWarning)
 
-# ==========================================================
-# MOTOR INTERNO: MICRO-SERVIDOR API (Bypass Sandbox Android)
-# ==========================================================
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('127.0.0.1', 0))
@@ -18,7 +15,7 @@ try:
 except:
     LOCAL_PORT = 8556
 
-# Variable global que almacena ÚNICAMENTE los datos Base64
+# Variable global que almacena ÚNICAMENTE los datos Base64 limpios
 LATEST_CODE_B64 = ""
 
 class NexusHandler(http.server.BaseHTTPRequestHandler):
@@ -26,22 +23,17 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
         global LATEST_CODE_B64
         parsed_url = urlparse(self.path)
         
-        # ==================================================
-        # RUTA API: Sirve los datos Base64 puros
-        # ==================================================
+        # RUTA API: Sirve los datos Base64 puros (JSON)
         if parsed_url.path == '/api/get_code_b64.json':
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            # Empaquetamos en JSON limpio
             response = json.dumps({"code_b64": LATEST_CODE_B64})
             self.wfile.write(response.encode('utf-8'))
             
-        # ==================================================
         # RUTA WEB: Sirve el HTML Estático
-        # ==================================================
         else:
             try:
                 with open(os.path.join("assets", "openscad_engine.html"), "r", encoding="utf-8") as f:
@@ -57,11 +49,9 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(f"Error cargando motor: {e}".encode('utf-8'))
                 
-    def log_message(self, format, *args):
-        pass 
+    def log_message(self, format, *args): pass 
 
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
-# ==========================================================
 
 def main(page: ft.Page):
     try:
@@ -79,9 +69,25 @@ def main(page: ft.Page):
         conn.commit()
 
         txt_name = ft.TextField(label="Proyecto", bgcolor="#121212", border_color="#333333")
+        
+        # El código OpenSCAD complejo 3D que mostraste en image_2.png
         txt_code = ft.TextField(
-            label="Código OpenSCAD", multiline=True, expand=True, 
-            value="module tree() {\n  // Tronco\n  cylinder(h=20, r=3);\n}\ntree();", 
+            label="Código OpenSCAD 3D", multiline=True, expand=True, 
+            value="""module branch(length, thickness, angle, depth) {
+  if (depth > 0) {
+    cylinder(h=length, r1=thickness, r2=thickness*0.6, $fn=12);
+    translate([0,0,length]) {
+      rotate([angle,0,0]) branch(length*0.75, thickness*0.7, angle-0.3, depth-1);
+      rotate([angle*0.6,0,120]) branch(length*0.7, thickness*0.7, angle+0.4, depth-1);
+      rotate([-angle*0.5,0,-120]) branch(length*0.7, thickness*0.7, angle-0.2, depth-1);
+    }
+  }
+}
+module tree() {
+  translate([0,0,-10]) branch(20, 3, 0.4, 8);
+}
+tree();
+""", 
             color="#00ff00", bgcolor="#050505", border_color="#333333"
         )
         status_text = ft.Text("Listo", color="grey600")
@@ -100,19 +106,19 @@ def main(page: ft.Page):
 
         def run_render():
             global LATEST_CODE_B64
-            status_text.value = "Enviando datos a API interna..."
+            status_text.value = "Generando malla por API segura..."
             status_text.color = "orange400"
             switch(1) 
 
             try:
-                # 1. CODIFICAR Y LIMPIAR EL CÓDIGO OpenSCAD
-                # No inyectamos nada, solo lo guardamos en memoria limpia
+                # 1. CODIFICAR Y GUARDAR EN MEMORIA limpia
                 raw_b64 = base64.b64encode(txt_code.value.encode('utf-8')).decode('utf-8')
-                LATEST_CODE_B64 = raw_b64.replace('\n', '').replace('\r', '') # <-- Base64 puro y limpio
+                LATEST_CODE_B64 = raw_b64.replace('\n', '').replace('\r', '') # Base64 puro
                 
-                # 2. CARGAMOS EL HTML ESTÁTICO MEDIANTE HTTP
+                # 2. CARGAMOS EL HTML ESTÁTICO (SPA)
                 final_url = f"http://127.0.0.1:{LOCAL_PORT}/?t={time.time()}"
-                # Intentamos abrir el visor con la URL nativa delegada al Frontend (Flutter)
+                
+                # Lanzamos en el navegador nativo delegando al Frontend (Flutter)
                 viewer_container.content = ft.ElevatedButton(
                     "🚀 VER MODELO GENERADO (Navegador Nativo)", 
                     url=final_url,
