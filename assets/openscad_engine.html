@@ -1,81 +1,102 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; background: #000; display: flex; flex-direction: column; height: 100vh; font-family: monospace; }
-        #status-bar { background: #111; border-bottom: 2px solid #333; padding: 15px; display: flex; align-items: center; }
-        #indicator { width: 15px; height: 15px; border-radius: 50%; background: #00ff00; margin-right: 15px; box-shadow: 0 0 10px #00ff00; }
-        #status-text { color: #00ff00; font-size: 16px; font-weight: bold; }
-        #console { background: #050505; color: #00e676; padding: 15px; flex-grow: 1; overflow-y: auto; font-size: 12px; white-space: pre-wrap; z-index: 10; }
-        canvas { position: absolute; bottom: 0; right: 0; width: 100%; height: 60%; opacity: 0.9; pointer-events: none; z-index: 1; }
+        body { margin: 0; padding: 0; background: #0a0a0a; color: #00ff00; overflow: hidden; font-family: monospace; }
+        #container { display: flex; flex-direction: column; height: 100vh; width: 100vw; }
+        #canvas-holder { flex-grow: 1; display: flex; justify-content: center; align-items: center; background: #111; border: 1px solid #1a1a1a; margin: 5px; border-radius: 8px; overflow: hidden; }
+        canvas { display: block; image-rendering: pixelated; /* Mejora nitidez en móviles */ }
+        
+        /* Panel de Estado Táctil Avanzado */
+        #state-panel { background: #1a1a1a; border-top: 1px solid #333; padding: 12px; display: flex; align-items: center; gap: 10px; font-size: 14px; z-index: 10; }
+        #state-indicator { width: 12px; height: 12px; border-radius: 50%; background: red; box-shadow: 0 0 5px red; }
     </style>
 </head>
 <body>
-    <div id="status-bar">
-        <div id="indicator"></div>
-        <div id="status-text">● RENDERIZADO COMPLETADO</div>
+    <div id="container">
+        <div id="canvas-holder">
+            <canvas id="cvs"></canvas>
+        </div>
+        <div id="state-panel">
+            <div id="state-indicator"></div>
+            <div id="state-text">● VISOR: Esperando datos...</div>
+        </div>
     </div>
-    <div id="console"></div>
-    <canvas id="cvs"></canvas>
 
     <script>
-        const consoleBox = document.getElementById('console');
         const canvas = document.getElementById('cvs');
         const ctx = canvas.getContext('2d');
-
+        const stateIndicator = document.getElementById('state-indicator');
+        const stateText = document.getElementById('state-text');
+        
+        // Ajuste dinámico del Canvas a la pantalla del móvil
         function resize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight * 0.6;
+            canvas.width = canvas.parentElement.clientWidth - 20;
+            canvas.height = canvas.parentElement.clientHeight - 20;
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Limpiar al girar
         }
         window.addEventListener('resize', resize);
         resize();
 
+        // 1. Decodificador Seguro (Evita que caracteres // o special chars rompan el HTML)
         function decodeB64(str) {
             return decodeURIComponent(atob(str).split('').map(c => 
                 '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)
             ).join(''));
         }
 
+        // Función fractal táctil: Dibujar tu árbol recursivamente
         function drawFractalTree(x, y, len, angle, depth) {
             if (depth === 0) return;
             ctx.beginPath(); ctx.moveTo(x, y);
             const x2 = x + Math.cos(angle) * len;
             const y2 = y + Math.sin(angle) * len;
             ctx.lineTo(x2, y2);
-            ctx.strokeStyle = depth < 3 ? '#00ff00' : '#8b5a2b';
+            ctx.strokeStyle = depth < 3 ? '#00e676' : '#8d6e63'; // Ramas verdes, tronco marrón
             ctx.lineWidth = depth; ctx.stroke();
+            // Ramificaciones
             drawFractalTree(x2, y2, len * 0.75, angle - 0.3, depth - 1);
             drawFractalTree(x2, y2, len * 0.7, angle + 0.4, depth - 1);
         }
 
-        // ==========================================================
-        // LA MAGIA: PYTHON REEMPLAZARÁ ESTA LÍNEA EXACTA
+        // 2. PUENTE DE COMUNICACIÓN INYECTADO (Template Baking)
+        // Python reemplazará esta línea exacta con tu código Base64
         const b64_payload = "__NEXUS_PAYLOAD__";
-        // ==========================================================
 
         try {
             if (b64_payload !== "__NEXUS_PAYLOAD__" && b64_payload.trim() !== "") {
                 const code = decodeB64(b64_payload);
-                consoleBox.innerHTML = "--- CÓDIGO INCORPORADO CON ÉXITO ---\n\n" + code;
+                console.log("CÓDIGO INTACTO INCORPORADO:", code);
                 
+                // Éxito visual
+                stateIndicator.style.background = '#00ff00';
+                stateIndicator.style.boxShadow = '0 0 10px #00ff00';
+                stateText.innerHTML = "● VISOR: Cubo generado nativamente.";
+                stateText.style.color = '#00ff00';
+
+                // Dibujar
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 if (code.toLowerCase().includes("branch") || code.toLowerCase().includes("tree")) {
-                    consoleBox.innerHTML += "\n\n> Módulo fractal detectado. Generando...";
+                    stateText.innerHTML = "● VISOR: Módulo de Árbol detectado. Generando fractal...";
                     drawFractalTree(canvas.width / 2, canvas.height, canvas.height / 3.5, -Math.PI / 2, 8);
+                } else if (code.toLowerCase().includes("sphere")) {
+                    ctx.fillStyle = "#2979ff"; ctx.beginPath(); ctx.arc(canvas.width/2, canvas.height/2, 50, 0, Math.PI * 2); ctx.fill();
                 } else {
-                    ctx.fillStyle = "#00e676";
-                    ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
+                    // Cubo por defecto táctil
+                    ctx.fillStyle = "#00e676"; ctx.fillRect(canvas.width/2 - 50, canvas.height/2 - 50, 100, 100);
                 }
             } else {
-                consoleBox.innerHTML = "Esperando código...";
-                document.getElementById('indicator').style.background = 'orange';
-                document.getElementById('status-text').style.color = 'orange';
-                document.getElementById('status-text').innerHTML = "● EN ESPERA";
+                stateText.innerHTML = "● VISOR: Esperando código... No hay datos inyectados.";
+                document.getElementById('state-indicator').style.background = 'orange';
+                document.getElementById('state-indicator').style.boxShadow = '0 0 5px orange';
+                document.getElementById('state-text').style.color = 'orange';
             }
         } catch(e) {
-            consoleBox.innerHTML = "Error interno de renderizado:\n" + e;
+            stateIndicator.style.background = 'red';
+            stateIndicator.style.boxShadow = '0 0 5px red';
+            stateText.innerHTML = "ERROR CRÍTICO: " + e.toString();
         }
     </script>
 </body>
