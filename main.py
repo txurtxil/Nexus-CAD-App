@@ -66,10 +66,10 @@ def main(page: ft.Page):
             padding=10, expand=True, bgcolor="#0a0a0a"
         )
 
-        # FIX CRÍTICO ESTÉTICO: Cambiado el icono por uno universal
+        # FIX CRÍTICO ESTÉTICO: Eliminado ft.Icon por completo. Usamos texto y Emoji.
         viewer_container = ft.Container(
             content=ft.Column([
-                ft.Icon(ft.icons.OPEN_IN_BROWSER, size=80, color="blue400"),
+                ft.Text("🌐", size=80),
                 ft.Text("Malla 3D Generada", color="white", size=20, weight="bold"),
                 ft.Text("El visor 3D se ejecutará en pantalla completa\ncon aceleración por hardware.", text_align="center", color="grey500"),
                 ft.Container(height=20),
