@@ -67,41 +67,33 @@ def main(page: ft.Page):
         )
 
         # ==========================================================
-        # UX DEFENSIVO: Mostrar URL y botón de copia de seguridad
+        # UX DEFENSIVO: Botones con delegación nativa al Frontend
         # ==========================================================
         link_text = ft.Text("http://127.0.0.1", color="blue400", selectable=True, italic=True)
+        
+        # Este es el botón mágico. Usaremos su propiedad 'url' nativa más adelante.
+        btn_open_browser = ft.ElevatedButton(
+            "🚀 ABRIR EN NAVEGADOR NATIVO", 
+            bgcolor="blue900", 
+            color="white"
+        )
 
         def copy_link():
             page.set_clipboard(link_text.value)
-            status_text.value = "✓ Enlace copiado. Pégalo en Chrome."
+            status_text.value = "✓ Enlace copiado al portapapeles."
             status_text.color = "green400"
             page.update()
-
-        def force_open_browser():
-            url = link_text.value
-            # Ataque 1: Flet Oficial
-            page.launch_url(url)
-            # Ataque 2: Python Nativo
-            try:
-                import webbrowser
-                webbrowser.open(url)
-            except:
-                pass
-            # Ataque 3: Android OS Terminal (Fuerza Bruta)
-            try:
-                os.system(f'am start -a android.intent.action.VIEW -d "{url}"')
-            except:
-                pass
 
         viewer_container = ft.Container(
             content=ft.Column([
                 ft.Text("🌐", size=80),
                 ft.Text("Malla 3D Generada", color="white", size=20, weight="bold"),
-                ft.Text("El sistema intentará abrir tu navegador.\nSi Android lo bloquea, copia este enlace y pégalo:", text_align="center", color="grey500"),
+                ft.Text("Servidor interno transmitiendo en:", text_align="center", color="grey500"),
                 link_text,
-                ft.Container(height=10),
-                ft.ElevatedButton("INTENTAR ABRIR NAVEGADOR", on_click=lambda e: force_open_browser(), bgcolor="blue900", color="white"),
-                ft.ElevatedButton("📋 COPIAR ENLACE (Seguro)", on_click=lambda e: copy_link(), bgcolor="#333333", color="white")
+                ft.Container(height=15),
+                btn_open_browser,
+                ft.Container(height=5),
+                ft.ElevatedButton("📋 COPIAR ENLACE MANUALMENTE", on_click=lambda e: copy_link(), bgcolor="#333333", color="white")
             ], alignment="center", horizontal_alignment="center"), 
             expand=True, visible=False
         )
@@ -126,17 +118,15 @@ def main(page: ft.Page):
                 
                 LATEST_HTML = template.replace("__NEXUS_PAYLOAD__", clean_b64)
                 
-                # Actualizar la URL visual para burlar la caché
+                # LA CLAVE: Actualizamos la URL nativa del botón
                 current_url = f"http://127.0.0.1:{LOCAL_PORT}/?t={int(time.time())}"
                 link_text.value = current_url
+                btn_open_browser.url = current_url  # <-- Delegación a Flutter OS
                 
                 switch(1)
-                status_text.value = f"✓ Listo. Abre el navegador."
+                status_text.value = f"✓ Listo. Pulsa el botón azul."
                 status_text.color = "blue400"
                 page.update()
-                
-                # Lanzar ataques de apertura automática
-                force_open_browser()
                 
             except Exception as e:
                 status_text.value = f"Error Python: {e}"
