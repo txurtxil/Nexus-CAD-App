@@ -44,10 +44,10 @@ def main(page: ft.Page):
             padding=10, expand=True, bgcolor="#0a0a0a"
         )
 
-        # Visor inactivo al arrancar
+        # FIX CRÍTICO: Reemplazado ft.alignment.center por ft.Alignment(0, 0)
         viewer_container = ft.Container(
             content=ft.Text("Visor inactivo. Pulsa compilar.", color="grey500"), 
-            alignment=ft.alignment.center, expand=True, visible=False
+            alignment=ft.Alignment(0, 0), expand=True, visible=False
         )
 
         def switch(idx):
