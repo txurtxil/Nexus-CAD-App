@@ -59,22 +59,43 @@
         function toggleLog() { logBox.classList.toggle('fullscreen'); }
         function decodeB64(str) { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
 
-        logToScreen('Paso 1: Motor CAD Industrial (v2.5) arrancado.');
+        logToScreen('Paso 1: Motor CAD Industrial (v2.5.1) arrancado.');
 
+        // Inicialización de Memoria (FIX DE HOISTING / ZONA MUERTA)
+        let isOrtho = false;
+        let aspect = window.innerWidth / (window.innerHeight*0.8);
+        let camRadius = 120; let d = 100;
+        let isDragging = false, prevX = 0, prevY = 0, lon = 45, lat = 45;
+        let initialPinchDist = null;
+        let mainMesh = null; let autoRotate = true; let currentCSG = null;
+        
         // Inicialización Three.js
         const canvas = document.getElementById('cvs');
         const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true, alpha: true});
         const scene = new THREE.Scene();
         
         // Cámaras duales (Perspectiva y Ortográfica)
-        let isOrtho = false;
-        let aspect = window.innerWidth / (window.innerHeight*0.8);
-        let camRadius = 120; let d = 100;
-        
         const cameraPersp = new THREE.PerspectiveCamera(45, aspect, 0.1, 2000);
         const cameraOrtho = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 0.1, 2000);
         let activeCamera = cameraPersp;
 
+        function updateCamera() {
+            const phi = (90 - lat) * (Math.PI / 180); const theta = lon * (Math.PI / 180);
+            
+            let px = camRadius * Math.sin(phi) * Math.cos(theta);
+            let py = camRadius * Math.cos(phi);
+            let pz = camRadius * Math.sin(phi) * Math.sin(theta);
+            
+            cameraPersp.position.set(px, py, pz); cameraPersp.lookAt(0, 0, 0);
+            cameraOrtho.position.set(px, py, pz); cameraOrtho.lookAt(0, 0, 0);
+            
+            let zoomFactor = camRadius / 100;
+            cameraOrtho.left = -d * aspect * zoomFactor; cameraOrtho.right = d * aspect * zoomFactor;
+            cameraOrtho.top = d * zoomFactor; cameraOrtho.bottom = -d * zoomFactor;
+            cameraOrtho.updateProjectionMatrix();
+        }
+
+        // AHORA resetCamera puede usarse porque 'lon' y 'lat' ya existen
         function resetCamera() { lon = 45; lat = 45; camRadius = 120; updateCamera(); }
         resetCamera();
 
@@ -91,11 +112,8 @@
         const matMetal = new THREE.MeshStandardMaterial({color: 0xaaaaaa, roughness: 0.3, metalness: 0.8, side: THREE.DoubleSide});
         const matGlass = new THREE.MeshStandardMaterial({color: 0x2196f3, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5, side: THREE.DoubleSide});
         const matWire = new THREE.MeshBasicMaterial({color: 0x00e676, wireframe: true});
-        
         const materials = [matGreen, matMetal, matGlass, matWire];
         let currentMatIndex = 0;
-
-        let mainMesh = null; let autoRotate = true; let currentCSG = null;
 
         // Controles de UI
         function toggleCamera() { 
@@ -110,10 +128,7 @@
         const zoomIn = () => { camRadius = Math.max(10, camRadius - 20); updateCamera(); };
         const zoomOut = () => { camRadius = Math.min(800, camRadius + 20); updateCamera(); };
 
-        // Táctil y Ratón
-        let isDragging = false, prevX = 0, prevY = 0, lon = 45, lat = 45;
-        let initialPinchDist = null;
-        
+        // Eventos Táctiles y de Ratón
         canvas.addEventListener('wheel', (e) => { camRadius += e.deltaY * 0.1; camRadius = Math.max(10, Math.min(800, camRadius)); updateCamera(); });
         canvas.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; autoRotate=false;});
         window.addEventListener('mouseup', () => isDragging = false);
@@ -122,6 +137,7 @@
             lon -= (e.clientX - prevX) * 0.5; lat += (e.clientY - prevY) * 0.5;
             lat = Math.max(-85, Math.min(85, lat)); prevX = e.clientX; prevY = e.clientY; updateCamera();
         });
+        
         canvas.addEventListener('touchstart', e => { if(e.touches.length === 1) { isDragging = true; prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; autoRotate=false; } });
         window.addEventListener('touchend', () => { isDragging = false; initialPinchDist = null; });
         window.addEventListener('touchmove', e => {
@@ -134,24 +150,6 @@
                 lat = Math.max(-85, Math.min(85, lat)); prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; updateCamera();
             }
         });
-
-        function updateCamera() {
-            const phi = (90 - lat) * (Math.PI / 180); const theta = lon * (Math.PI / 180);
-            
-            // Posicionar ambas cámaras por igual
-            let px = camRadius * Math.sin(phi) * Math.cos(theta);
-            let py = camRadius * Math.cos(phi);
-            let pz = camRadius * Math.sin(phi) * Math.sin(theta);
-            
-            cameraPersp.position.set(px, py, pz); cameraPersp.lookAt(0, 0, 0);
-            cameraOrtho.position.set(px, py, pz); cameraOrtho.lookAt(0, 0, 0);
-            
-            // Escalar ortográfica basada en el zoom
-            let zoomFactor = camRadius / 100;
-            cameraOrtho.left = -d * aspect * zoomFactor; cameraOrtho.right = d * aspect * zoomFactor;
-            cameraOrtho.top = d * zoomFactor; cameraOrtho.bottom = -d * zoomFactor;
-            cameraOrtho.updateProjectionMatrix();
-        }
 
         window.addEventListener('resize', () => {
             let h = logBox.classList.contains('fullscreen') ? window.innerHeight : window.innerHeight*0.8;
@@ -197,6 +195,7 @@
                 logToScreen('✓ Malla WebGL Industrial generada.');
             } catch(e) { 
                 logToScreen('ERROR EN CÓDIGO: ' + e.message, true); 
+                logToScreen('Abre el panel DEBUG si necesitas ver el rastro completo.', true);
             }
         }
 

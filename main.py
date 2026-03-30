@@ -51,7 +51,7 @@ threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT)
 
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v2.5 (Industrial)"
+        page.title = "NEXUS CAD v2.5.1 (Industrial)"
         page.theme_mode = "dark"
         page.bgcolor = "#0a0a0a"
         page.padding = 0
@@ -59,7 +59,7 @@ def main(page: ft.Page):
         export_dir = os.path.join(os.environ.get("HOME", os.getcwd()), "nexus_proyectos")
         os.makedirs(export_dir, exist_ok=True)
 
-        status_text = ft.Text("Sistema Online - v2.5 Industrial", color="grey600", size=11)
+        status_text = ft.Text("Sistema Online - v2.5.1 Industrial", color="grey600", size=11)
 
         # =========================================================
         # PLANTILLAS INDUSTRIALES
