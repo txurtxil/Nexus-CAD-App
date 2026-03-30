@@ -58,7 +58,7 @@ threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT)
 
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD AI Core (v1.7.0)"
+        page.title = "NEXUS CAD AI Core (v1.7.1)"
         page.theme_mode = "dark"
         page.bgcolor = "#0a0a0a"
         page.padding = 0
@@ -67,17 +67,12 @@ def main(page: ft.Page):
         os.makedirs(export_dir, exist_ok=True)
 
         # =========================================================
-        # PLANTILLAS JS-CSG (Optimizadas para IA)
+        # PLANTILLAS JS-CSG
         # =========================================================
-        code_gear = """// Pídele a la IA: "Genera código JS usando CSG.js con una función main()"
-function main() {
-    // Engranaje Básico Booleano
+        code_gear = """function main() {
     var base = CSG.cylinder({start: [0,-2,0], end: [0,2,0], radius: 15, slices: 32});
     var hole = CSG.cylinder({start: [0,-3,0], end: [0,3,0], radius: 5, slices: 16});
-    
-    // Sustracción Real (Operación Booleana)
     var gear = base.subtract(hole);
-    
     for(var i=0; i<8; i++) {
         var a = (i * 45) * Math.PI / 180;
         var tooth = CSG.cube({center: [Math.cos(a)*15, 0, Math.sin(a)*15], radius: [2, 2, 2]});
@@ -87,21 +82,19 @@ function main() {
 }"""
 
         code_box = """function main() {
-    // Carcasa / Caja hueca
     var exterior = CSG.cube({center: [0,0,0], radius: [20, 10, 15]});
-    var interior = CSG.cube({center: [0,2,0], radius: [18, 10, 13]}); // Desplazado para hacer la tapa abierta
-    
+    var interior = CSG.cube({center: [0,2,0], radius: [18, 10, 13]}); 
     return exterior.subtract(interior);
 }"""
 
         # =========================================================
-        # UI EDITOR
+        # UI EDITOR (LAYOUT CORREGIDO)
         # =========================================================
         txt_code = ft.TextField(
             label="Código IA (Javascript CSG)", multiline=True, expand=True, 
             value=code_gear, color="#00ff00", bgcolor="#050505", border_color="#333333", text_size=12
         )
-        status_text = ft.Text("Sistema AI Online - v1.7.0", color="grey600", size=11)
+        status_text = ft.Text("Sistema AI Online - v1.7.1", color="grey600", size=11)
 
         def save_project():
             filename = f"ai_model_{int(time.time())}.jscad"
@@ -113,20 +106,26 @@ function main() {
         def load_template(code): txt_code.value = code; page.update()
 
         row_actions = ft.Row([
-            ft.ElevatedButton("⚙️ Engranaje", on_click=lambda _: load_template(code_gear), bgcolor="#222222", color="white"),
-            ft.ElevatedButton("📦 Caja", on_click=lambda _: load_template(code_box), bgcolor="#222222", color="white"),
+            ft.ElevatedButton("⚙️", on_click=lambda _: load_template(code_gear), bgcolor="#222222", color="white", tooltip="Engranaje"),
+            ft.ElevatedButton("📦", on_click=lambda _: load_template(code_box), bgcolor="#222222", color="white", tooltip="Caja"),
             ft.ElevatedButton("💾 Guardar", on_click=lambda _: save_project(), bgcolor="#8e24aa", color="white"),
             ft.ElevatedButton("🗑️", on_click=lambda _: clear_code(), bgcolor="#e53935", color="white"),
         ], scroll=ft.ScrollMode.AUTO)
         
-        editor_scrollable_area = ft.Container(content=ft.Column([row_actions, txt_code], expand=True), expand=True)
+        btn_compile = ft.ElevatedButton("▶ COMPILAR MALLA BOOLEANA", on_click=lambda e: run_render(), bgcolor="green900", color="white", height=50, width=float('inf'))
+
+        # NUEVO ORDEN DE INTERFAZ: Botón Compilar ARRIBA, luego acciones, luego la caja de texto infinita
         editor_container = ft.Container(
-            content=ft.Column([editor_scrollable_area, ft.ElevatedButton("▶ COMPILAR MALLA BOOLEANA", on_click=lambda e: run_render(), bgcolor="green900", color="white", height=55, width=float('inf'))], expand=True), 
+            content=ft.Column([
+                btn_compile,
+                row_actions,
+                txt_code
+            ], expand=True), 
             padding=10, expand=True, bgcolor="#0a0a0a", visible=True
         )
         
         # =========================================================
-        # UI EXPLORADOR DE ARCHIVOS
+        # UI EXPLORADOR DE ARCHIVOS (FIX ICONO)
         # =========================================================
         lv_files = ft.ListView(expand=True, spacing=5)
         
@@ -137,8 +136,9 @@ function main() {
         def update_explorer():
             lv_files.controls.clear()
             for f in reversed(os.listdir(export_dir)):
+                # FIX: Sustituido el icono problemático por un emoji de texto plano "📄"
                 lv_files.controls.append(
-                    ft.Container(content=ft.Row([ft.Icon(ft.icons.INSERT_DRIVE_FILE, color="blue400"), ft.Text(f, color="white")]), 
+                    ft.Container(content=ft.Row([ft.Text("📄", size=20), ft.Text(f, color="white")]), 
                                  bgcolor="#1a1a1a", padding=10, border_radius=5, on_click=lambda e, fname=f: load_file(fname))
                 )
             page.update()
