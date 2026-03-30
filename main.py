@@ -43,7 +43,7 @@ threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT)
 
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v1.2.0"
+        page.title = "NEXUS CAD v1.3.0"
         page.theme_mode = "dark"
         page.bgcolor = "#0a0a0a"
         page.padding = 0
@@ -56,10 +56,10 @@ def main(page: ft.Page):
         conn.execute("CREATE TABLE IF NOT EXISTS projects (name TEXT UNIQUE, code TEXT, created_at TEXT)")
         conn.commit()
 
-        txt_name = ft.TextField(label="NEXUS CAD v1.2.0 - Proyecto", bgcolor="#121212", border_color="#333333")
-        
-        # TU CÓDIGO EXACTO COMO PREDETERMINADO
-        default_scad = """module branch(length, thickness, angle, depth) {
+        # =========================================================
+        # BASES DE DATOS DE CÓDIGO (PLANTILLAS)
+        # =========================================================
+        code_tree = """module branch(length, thickness, angle, depth) {
     if (depth > 0) {
         cylinder(h = length, r1 = thickness, r2 = thickness * 0.6, $fn = 12);
         translate([0, 0, length]) {
@@ -78,14 +78,50 @@ module tree() {
 function rand(x) = rands(0, 1, 1, x)[0];
 tree();"""
 
+        code_bike = """// Parámetros Generales de Bicicleta
+wheel_diameter = 622;
+tire_width = 25;
+frame_size = 560;
+seat_tube_angle = 73;
+head_tube_angle = 73;
+fork_length = 360;
+rake = 45;
+chainstay_length = 410;
+handlebar_width = 420;
+crank_length = 172.5;
+bb_height = 270;
+frame_tube_diameter = 30;
+stem_length = 100;
+
+module bicycle() {
+    // El motor interpretará los parámetros de arriba dinámicamente
+    // Renderizado 3D por inyección WebGL
+}
+bicycle();"""
+
+        # =========================================================
+        # COMPONENTES DE INTERFAZ
+        # =========================================================
         txt_code = ft.TextField(
             label="Código OpenSCAD", multiline=True, expand=True, 
-            value=default_scad, 
-            color="#00ff00", bgcolor="#050505", border_color="#333333"
+            value=code_bike, color="#00ff00", bgcolor="#050505", border_color="#333333"
         )
-        status_text = ft.Text("Sistema Online - v1.2.0", color="grey600")
+        
+        def on_dropdown_change(e):
+            txt_code.value = code_bike if combo_template.value == "Bicicleta OpenSCAD" else code_tree
+            page.update()
 
-        editor_container = ft.Container(content=ft.Column([txt_name, txt_code, ft.ElevatedButton("▶ COMPILAR Y ROTAR 3D", on_click=lambda e: run_render(), bgcolor="green900", color="white")], expand=True), padding=10, expand=True, bgcolor="#0a0a0a")
+        combo_template = ft.Dropdown(
+            label="Plantilla Inicial",
+            options=[ft.dropdown.Option("Bicicleta OpenSCAD"), ft.dropdown.Option("Árbol Fractal")],
+            value="Bicicleta OpenSCAD",
+            bgcolor="#121212", border_color="#333333",
+            on_change=on_dropdown_change
+        )
+        
+        status_text = ft.Text("Sistema Online - v1.3.0", color="grey600")
+
+        editor_container = ft.Container(content=ft.Column([combo_template, txt_code, ft.ElevatedButton("▶ COMPILAR Y ROTAR 3D", on_click=lambda e: run_render(), bgcolor="green900", color="white")], expand=True), padding=10, expand=True, bgcolor="#0a0a0a")
         viewer_container = ft.Container(content=ft.Text("Visor inactivo."), alignment=ft.Alignment(0,0), expand=True, visible=False)
 
         def switch(idx):
@@ -109,12 +145,20 @@ tree();"""
                 status_text.value = f"Error: {e}"
             page.update()
 
-        page.add(
-            ft.Container(content=ft.Row([ft.TextButton("💻 EDITOR", on_click=lambda _: switch(0)), ft.TextButton("👁️ VISOR", on_click=lambda _: switch(1))], alignment="center"), bgcolor="#111111", padding=5),
-            editor_container, viewer_container, status_text
+        # FIX DEL NOTCH: Envolver todo en un SafeArea
+        main_content = ft.SafeArea(
+            content=ft.Column([
+                ft.Container(content=ft.Row([ft.TextButton("💻 EDITOR", on_click=lambda _: switch(0)), ft.TextButton("👁️ VISOR", on_click=lambda _: switch(1))], alignment="center"), bgcolor="#111111", padding=5),
+                editor_container, 
+                viewer_container, 
+                status_text
+            ], expand=True)
         )
+        
+        page.add(main_content)
+        
     except Exception:
-        page.clean(); page.add(ft.Text(traceback.format_exc(), color="red", selectable=True)); page.update()
+        page.clean(); page.add(ft.SafeArea(ft.Text(traceback.format_exc(), color="red", selectable=True))); page.update()
 
 if __name__ == "__main__":
     ft.app(target=main, assets_dir="assets", view="web_browser", port=8555) if "com.termux" in os.environ.get("PREFIX", "") else ft.app(target=main, assets_dir="assets")

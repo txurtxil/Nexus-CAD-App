@@ -8,7 +8,8 @@
         #visor-container { flex: 1; position: relative; border-bottom: 2px solid #1a1a1a; z-index: 10; cursor: grab; }
         #visor-container:active { cursor: grabbing; }
         canvas { display: block; width: 100%; height: 100%; z-index: 20; position: absolute; top: 0; left: 0; }
-        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 30; background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 5px; pointer-events: none; }
+        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 30; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; border: 1px solid #333; }
+        button { background: #0044cc; color: white; border: none; padding: 5px 10px; border-radius: 4px; margin-right: 5px; font-weight: bold; }
         #log-container { height: 120px; background: #050505; padding: 10px; overflow-y: auto; font-size: 11px; z-index: 5; }
         .log-msg { margin-bottom: 4px; border-bottom: 1px dashed #222; padding-bottom: 4px; }
         .error { color: #ff3333; font-weight: bold; }
@@ -17,7 +18,11 @@
 </head>
 <body>
     <div id="visor-container">
-        <div id="overlay-ui">👆 Arrastra para rotar en 3D</div>
+        <div id="overlay-ui">
+            <button onclick="autoRotate = !autoRotate;">🔄 Auto-Rotar</button>
+            <button onclick="showGrid = !showGrid; renderScene();">▦ Grid Suelo</button>
+            <div style="color:#aaa; font-size:11px; margin-top:8px;">👆 Arrastra para orbitar la cámara</div>
+        </div>
         <canvas id="cvs"></canvas>
     </div>
     <div id="log-container"></div>
@@ -32,150 +37,161 @@
         }
         window.onerror = function(msg, url, line) { logToScreen('CRASH FATAL: ' + msg, true); return false; };
 
-        logToScreen('Paso 1: Motor WebGL-Bypass 3.0 (v1.2.1) arrancado.');
+        logToScreen('Paso 1: Motor Gráfico Dual 4.0 (v1.3.0) arrancado a 60FPS.');
         
         const canvas = document.getElementById('cvs');
         const ctx = canvas.getContext('2d');
         let width, height;
-        
-        // ==================================================
-        // FIX CRÍTICO: Variables declaradas ARRIBA (Evita ReferenceError)
-        // ==================================================
-        let camRotZ = 0; 
-        let camRotX = 0.2; 
-        let zoom = 4;
+        let camRotZ = 0.5, camRotX = 0.3, zoom = 4;
         let geometry = []; 
+        let autoRotate = true, showGrid = true;
         
         function resize() {
             width = canvas.width = canvas.parentElement.clientWidth;
             height = canvas.height = canvas.parentElement.clientHeight;
-            if(geometry && geometry.length > 0) renderScene();
         }
         window.addEventListener('resize', resize);
         resize();
 
         function decodeB64(str) { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
 
-        // ==================================================
-        // MOTOR DE MATRICES 3D Y CÁMARA
-        // ==================================================
+        // MATRICES CORE
         const identity = () => [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1];
-        const multiply = (a, b) => {
-            let c = new Array(16).fill(0);
-            for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) c[i + j*4] += a[i + k*4] * b[k + j*4];
-            return c;
-        };
+        const multiply = (a, b) => { let c = new Array(16).fill(0); for(let i=0; i<4; i++) for(let j=0; j<4; j++) for(let k=0; k<4; k++) c[i + j*4] += a[i + k*4] * b[k + j*4]; return c; };
         const translateMat = (x,y,z) => [1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1];
         const rotateXMat = (d) => { let c=Math.cos(d), s=Math.sin(d); return [1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]; };
         const rotateYMat = (d) => { let c=Math.cos(d), s=Math.sin(d); return [c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]; };
         const rotateZMat = (d) => { let c=Math.cos(d), s=Math.sin(d); return [c,s,0,0, -s,c,0,0, 0,0,1,0, 0,0,0,1]; };
-        
-        const transformPoint = (p, m) => ({
-            x: p.x*m[0] + p.y*m[4] + p.z*m[8] + m[12],
-            y: p.x*m[1] + p.y*m[5] + p.z*m[9] + m[13],
-            z: p.x*m[2] + p.y*m[6] + p.z*m[10] + m[14]
-        });
+        const transformPoint = (p, m) => ({ x: p.x*m[0] + p.y*m[4] + p.z*m[8] + m[12], y: p.x*m[1] + p.y*m[5] + p.z*m[9] + m[13], z: p.x*m[2] + p.y*m[6] + p.z*m[10] + m[14] });
 
-        // ==================================================
-        // CONTROLES TÁCTILES Y RATÓN
-        // ==================================================
+        // CONTROLES
         let isDragging = false, lastX=0, lastY=0;
-        const startDrag = (x,y) => { isDragging = true; lastX = x; lastY = y; };
-        const onDrag = (x,y) => {
-            if(!isDragging) return;
-            camRotZ -= (x - lastX) * 0.01; // Giro fluido horizontal
-            camRotX += (y - lastY) * 0.01; // Giro fluido vertical
-            lastX = x; lastY = y;
-            renderScene();
-        };
-        const endDrag = () => isDragging = false;
-
-        canvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY));
-        window.addEventListener('mousemove', e => onDrag(e.clientX, e.clientY));
-        window.addEventListener('mouseup', endDrag);
-        canvas.addEventListener('touchstart', e => startDrag(e.touches[0].clientX, e.touches[0].clientY));
-        window.addEventListener('touchmove', e => onDrag(e.touches[0].clientX, e.touches[0].clientY));
-        window.addEventListener('touchend', endDrag);
+        const startDrag = (x,y) => { isDragging = true; autoRotate = false; lastX = x; lastY = y; };
+        const onDrag = (x,y) => { if(!isDragging) return; camRotZ -= (x - lastX) * 0.01; camRotX += (y - lastY) * 0.01; lastX = x; lastY = y; };
+        const endDrag = () => { isDragging = false; };
+        canvas.addEventListener('mousedown', e => startDrag(e.clientX, e.clientY)); window.addEventListener('mousemove', e => onDrag(e.clientX, e.clientY)); window.addEventListener('mouseup', endDrag);
+        canvas.addEventListener('touchstart', e => startDrag(e.touches[0].clientX, e.touches[0].clientY)); window.addEventListener('touchmove', e => onDrag(e.touches[0].clientX, e.touches[0].clientY)); window.addEventListener('touchend', endDrag);
 
         // ==================================================
-        // COMPILADOR OpenSCAD a MATRICES
+        // MOTOR DE ANÁLISIS DUAL (ÁRBOL vs BICI)
         // ==================================================
         function buildGeometry(code) {
             geometry = [];
-            let matStack = [];
-            let currentMat = identity();
-            const pushMat = () => matStack.push([...currentMat]);
-            const popMat = () => currentMat = matStack.pop();
-            const apply = (m) => currentMat = multiply(currentMat, m);
-
-            let length = 20, thickness = 3, baseAngle = 25, maxDepth = 7;
-            const match = code.match(/branch\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/);
-            if (match) {
-                length = parseFloat(match[1]); thickness = parseFloat(match[2]);
-                baseAngle = parseFloat(match[3]); maxDepth = parseInt(match[4]);
-                logToScreen(`✓ Geometría: L=${length}, Grosor=${thickness}, Ang=${baseAngle}°, Nivel=${maxDepth}`);
-            }
-
-            zoom = (height * 0.5) / (length * 3);
-
-            function addLine(l, t) {
-                let p1 = transformPoint({x:0, y:0, z:0}, currentMat);
-                let p2 = transformPoint({x:0, y:0, z:l}, currentMat);
-                geometry.push({type: 'line', p1, p2, t, rawZ: Math.max(p1.z, p2.z)});
-            }
-
-            function branch(l, t, a, d) {
-                if(d <= 0) return;
-                
-                addLine(l, t);
-                
-                pushMat();
-                apply(translateMat(0, 0, l));
-
-                // Translaciones matemáticas equivalentes a tu OpenSCAD
-                pushMat(); apply(rotateXMat(a * Math.PI/180)); branch(l*0.7, t*0.7, a*1.1, d-1); popMat();
-                pushMat(); apply(rotateZMat(120 * Math.PI/180)); apply(rotateXMat(-a*0.8 * Math.PI/180)); branch(l*0.7, t*0.7, a, d-1); popMat();
-                pushMat(); apply(rotateZMat(240 * Math.PI/180)); apply(rotateXMat(a*0.5 * Math.PI/180)); branch(l*0.7, t*0.7, a*1.2, d-1); popMat();
-
-                popMat();
-            }
-
-            logToScreen('Paso 8: Procesando recursividad 3D...');
-            branch(length, thickness, baseAngle, maxDepth);
             
-            // Follaje
-            if(code.includes('sphere')) {
-                let foliageHeight = length * 2.5;
-                for (let i = 0; i < 360; i += 15) {
-                    let r = 4 + Math.random()*2;
-                    let p = transformPoint({
-                        x: Math.cos(i) * (Math.random()*20), 
-                        y: Math.sin(i) * (Math.random()*20), 
-                        z: foliageHeight + Math.random()*15
-                    }, identity());
-                    geometry.push({type: 'sphere', p, r, rawZ: p.z});
+            // GENERADOR DE REJILLA (SUELO)
+            const addGrid = () => {
+                for(let i=-500; i<=500; i+=100) {
+                    geometry.push({type: 'line', p1: {x:i, y:-500, z:0}, p2: {x:i, y:500, z:0}, c: '#113311', t: 1, rawZ:0});
+                    geometry.push({type: 'line', p1: {x:-500, y:i, z:0}, p2: {x:500, y:i, z:0}, c: '#113311', t: 1, rawZ:0});
                 }
-                logToScreen('✓ Follaje de esferas procesado.');
+            };
+            addGrid();
+
+            // RUTA 1: MODO BICICLETA
+            if(code.includes('bicycle')) {
+                logToScreen('Paso 8: Iniciando motor de cuadro de bicicleta...');
+                let wd = 622, fs = 560, cs = 410, rake = 45;
+                let m;
+                if(m = code.match(/wheel_diameter\s*=\s*([\d.]+)/)) wd = parseFloat(m[1]);
+                if(m = code.match(/frame_size\s*=\s*([\d.]+)/)) fs = parseFloat(m[1]);
+                
+                zoom = (height * 0.5) / 1000;
+                let offX = -cs; // Centrar la bici en la pantalla
+
+                const addLine = (p1, p2, color, th) => geometry.push({type: 'line', p1: {x:p1.x+offX, y:p1.y, z:p1.z}, p2: {x:p2.x+offX, y:p2.y, z:p2.z}, c: color, t: th, rawZ: p1.z});
+                const addWheel = (cx, cz) => {
+                    let prev=null, first=null;
+                    for(let i=0; i<=360; i+=15) {
+                        let a = i * Math.PI/180;
+                        let p = {x: cx + (wd/2)*Math.cos(a), y: 0, z: cz + (wd/2)*Math.sin(a)};
+                        if(prev) addLine(prev, p, '#cccccc', 4);
+                        if(!first) first = p;
+                        prev = p;
+                        if(i%45===0) addLine({x:cx,y:0,z:cz}, p, '#444444', 1); // Radios
+                    }
+                };
+
+                // Puntos clave matemáticos de la bicicleta
+                let bbx = cs, bbz = 270;
+                let stx = bbx - fs * Math.cos(73*Math.PI/180), stz = bbz + fs * Math.sin(73*Math.PI/180);
+                let hbx = bbx + 550 * Math.sin(73*Math.PI/180), hbz = bbz + 550 * Math.cos(73*Math.PI/180);
+                let htx = hbx - 150 * Math.cos(73*Math.PI/180), htz = hbz + 150 * Math.sin(73*Math.PI/180);
+                let fwx = hbx + 360 * Math.cos(73*Math.PI/180) + rake, fwz = wd/2;
+
+                // Dibujar Cuadro
+                addLine({x:bbx,y:0,z:bbz}, {x:stx,y:0,z:stz}, '#ff3333', 6); // Seat tube
+                addLine({x:bbx,y:0,z:bbz}, {x:hbx,y:0,z:hbz}, '#ff9900', 6); // Down tube
+                addLine({x:stx,y:0,z:stz}, {x:htx,y:0,z:htz}, '#33ff33', 6); // Top tube
+                addLine({x:hbx,y:0,z:hbz}, {x:htx,y:0,z:htz}, '#3333ff', 8); // Head tube
+                
+                // Horquilla y vainas (simulando 3D abriéndose hacia las ruedas)
+                addLine({x:bbx,y:20,z:bbz}, {x:0,y:20,z:wd/2}, '#aa5500', 4);
+                addLine({x:bbx,y:-20,z:bbz}, {x:0,y:-20,z:wd/2}, '#aa5500', 4);
+                addLine({x:stx,y:10,z:stz}, {x:0,y:20,z:wd/2}, '#aa00aa', 4);
+                addLine({x:stx,y:-10,z:stz}, {x:0,y:-20,z:wd/2}, '#aa00aa', 4);
+                addLine({x:hbx,y:20,z:hbz}, {x:fwx,y:20,z:fwz}, '#3333ff', 5);
+                addLine({x:hbx,y:-20,z:hbz}, {x:fwx,y:-20,z:fwz}, '#3333ff', 5);
+
+                // Dibujar Manillar
+                addLine({x:htx,y:-150,z:htz}, {x:htx,y:150,z:htz}, '#ffffff', 5);
+                
+                // Dibujar Ruedas
+                addWheel(0, wd/2);
+                addWheel(fwx, fwz);
+                
+                logToScreen('✓ Chasis y ruedas procesadas con éxito.');
+            } 
+            // RUTA 2: MODO ÁRBOL FRACTAL
+            else {
+                logToScreen('Paso 8: Iniciando motor recursivo de árbol...');
+                let matStack = []; let currentMat = identity();
+                const pushMat = () => matStack.push([...currentMat]); const popMat = () => currentMat = matStack.pop(); const apply = (m) => currentMat = multiply(currentMat, m);
+
+                let length = 20, thickness = 3, baseAngle = 25, maxDepth = 7;
+                let match = code.match(/branch\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)/);
+                if (match) { length = parseFloat(match[1]); thickness = parseFloat(match[2]); baseAngle = parseFloat(match[3]); maxDepth = parseInt(match[4]); }
+
+                zoom = (height * 0.5) / (length * 3);
+
+                function addLine(l, t) {
+                    let p1 = transformPoint({x:0, y:0, z:0}, currentMat); let p2 = transformPoint({x:0, y:0, z:l}, currentMat);
+                    geometry.push({type: 'line', p1, p2, c: '#8d6e63', t, rawZ: Math.max(p1.z, p2.z)});
+                }
+
+                function branch(l, t, a, d) {
+                    if(d <= 0) return; addLine(l, t); pushMat(); apply(translateMat(0, 0, l));
+                    pushMat(); apply(rotateXMat(a * Math.PI/180)); branch(l*0.7, t*0.7, a*1.1, d-1); popMat();
+                    pushMat(); apply(rotateZMat(120 * Math.PI/180)); apply(rotateXMat(-a*0.8 * Math.PI/180)); branch(l*0.7, t*0.7, a, d-1); popMat();
+                    pushMat(); apply(rotateZMat(240 * Math.PI/180)); apply(rotateXMat(a*0.5 * Math.PI/180)); branch(l*0.7, t*0.7, a*1.2, d-1); popMat();
+                    popMat();
+                }
+
+                branch(length, thickness, baseAngle, maxDepth);
+                
+                if(code.includes('sphere')) {
+                    let fH = length * 2.5;
+                    for (let i = 0; i < 360; i += 15) {
+                        let r = 4 + Math.random()*2;
+                        let p = transformPoint({ x: Math.cos(i) * (Math.random()*20), y: Math.sin(i) * (Math.random()*20), z: fH + Math.random()*15 }, identity());
+                        geometry.push({type: 'sphere', p, r, rawZ: p.z});
+                    }
+                }
+                logToScreen('✓ Malla fractal procesada.');
             }
         }
 
         // ==================================================
-        // RENDERIZADOR 3D INTERACTIVO
+        // RENDERIZADOR 3D 60FPS
         // ==================================================
         function renderScene() {
             ctx.clearRect(0, 0, width, height);
-            let cx = width/2, cy = height - (height*0.2); // Anclaje inferior
+            let cx = width/2, cy = height - (height*0.2); 
 
-            // 1. Aplicar transformaciones de cámara (Rotación de usuario)
             let projected = geometry.map(item => {
+                if(!showGrid && item.c === '#113311') return null; // Filtrar grid si está oculto
                 let projectPoint = (p) => {
-                    // Yaw
-                    let x1 = p.x*Math.cos(camRotZ) - p.y*Math.sin(camRotZ);
-                    let y1 = p.x*Math.sin(camRotZ) + p.y*Math.cos(camRotZ);
-                    let z1 = p.z;
-                    // Pitch
-                    let y2 = y1*Math.cos(camRotX) - z1*Math.sin(camRotX);
-                    let z2 = y1*Math.sin(camRotX) + z1*Math.cos(camRotX);
+                    let x1 = p.x*Math.cos(camRotZ) - p.y*Math.sin(camRotZ), y1 = p.x*Math.sin(camRotZ) + p.y*Math.cos(camRotZ), z1 = p.z;
+                    let y2 = y1*Math.cos(camRotX) - z1*Math.sin(camRotX), z2 = y1*Math.sin(camRotX) + z1*Math.cos(camRotX);
                     return { x: cx + x1*zoom, y: cy - z2*zoom, depth: y2 }; 
                 };
 
@@ -185,39 +201,34 @@
                 } else {
                     return { ...item, p: projectPoint(item.p), depth: projectPoint(item.p).depth };
                 }
-            });
+            }).filter(item => item !== null);
 
-            // 2. Z-Buffer: Ordenar dibujando lo lejano primero (Fake 3D)
-            projected.sort((a,b) => b.depth - a.depth);
+            projected.sort((a,b) => b.depth - a.depth); // Z-Buffer
 
-            // 3. Pintar en lienzo 2D
             projected.forEach(item => {
                 if(item.type === 'line') {
-                    ctx.beginPath();
-                    ctx.moveTo(item.p1.x, item.p1.y);
-                    ctx.lineTo(item.p2.x, item.p2.y);
-                    ctx.strokeStyle = '#8d6e63';
-                    ctx.lineWidth = Math.max(0.5, item.t * zoom * 0.1);
-                    ctx.lineCap = 'round';
-                    ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(item.p1.x, item.p1.y); ctx.lineTo(item.p2.x, item.p2.y);
+                    ctx.strokeStyle = item.c; ctx.lineWidth = Math.max(0.5, item.t * zoom * 0.1); ctx.lineCap = 'round'; ctx.stroke();
                 } else {
-                    ctx.beginPath();
-                    ctx.arc(item.p.x, item.p.y, item.r * zoom * 0.2, 0, Math.PI*2);
-                    ctx.fillStyle = `rgba(0, 200, 100, 0.7)`;
-                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(item.p.x, item.p.y, item.r * zoom * 0.2, 0, Math.PI*2);
+                    ctx.fillStyle = `rgba(0, 200, 100, 0.7)`; ctx.fill();
                 }
             });
         }
 
-        // ==================================================
+        function animate() {
+            if(autoRotate) { camRotZ -= 0.005; renderScene(); }
+            requestAnimationFrame(animate); // Bucle a 60FPS
+        }
+
         // ARRANQUE API
-        // ==================================================
         fetch('/api/get_code_b64.json').then(r => r.json()).then(data => {
             if (data.code_b64) {
-                logToScreen('✓ Paso 6: Código recibido. Generando mallas...');
+                logToScreen('✓ Paso 6: Código recibido. Compilando en 3D...');
                 buildGeometry(decodeB64(data.code_b64));
                 renderScene();
-                logToScreen('✓ Paso 9: LISTO. Arrastra el dedo por la pantalla para rotar.');
+                animate(); // Iniciar animación continua
+                logToScreen('✓ Paso 9: LISTO. Motor a 60FPS corriendo.');
             }
         }).catch(e => logToScreen('ERROR API: ' + e.message, true));
     </script>
