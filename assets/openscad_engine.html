@@ -9,11 +9,14 @@
         #visor-container:active { cursor: grabbing; }
         canvas { display: block; width: 100%; height: 100%; z-index: 20; position: absolute; top: 0; left: 0; }
         
-        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 30; background: rgba(0,0,0,0.8); padding: 8px; border-radius: 8px; border: 1px solid #333; display: flex; flex-wrap: wrap; gap: 5px; max-width: 95%; }
-        button { background: #0044cc; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; font-size: 12px; }
+        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 30; background: rgba(0,0,0,0.85); padding: 8px; border-radius: 8px; border: 1px solid #444; display: flex; flex-wrap: wrap; gap: 5px; max-width: 95%; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
+        button { background: #0044cc; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; text-transform: uppercase; }
         .btn-export { background: #d81b60; }
         .btn-debug { background: #f57c00; }
-        .btn-tool { background: #4caf50; }
+        .btn-tool { background: #2e7d32; }
+        .btn-cam { background: #4527a0; }
+        
+        #bbox-info { position: absolute; bottom: 15px; right: 15px; z-index: 30; background: rgba(0,255,100,0.1); border: 1px solid #00ff00; color: #00ff00; padding: 5px 10px; border-radius: 4px; font-size: 11px; pointer-events: none; }
         
         #log-container { height: 120px; background: #050505; padding: 10px; overflow-y: auto; font-size: 11px; z-index: 40; position: relative; transition: all 0.3s ease; }
         #log-container.fullscreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-sizing: border-box; font-size: 14px; padding-top: 50px; z-index: 1000; background: rgba(5,5,5,0.98); }
@@ -29,14 +32,16 @@
 <body>
     <div id="visor-container">
         <div id="overlay-ui">
-            <button onclick="autoRotate = !autoRotate;">🔄 Rotar</button>
-            <button class="btn-tool" onclick="toggleWireframe();">🕸️ Malla</button>
-            <button class="btn-tool" onclick="zoomIn();">➕ Zoom</button>
-            <button class="btn-tool" onclick="zoomOut();">➖ Zoom</button>
+            <button class="btn-tool" onclick="autoRotate = !autoRotate;">🔄 Rotar</button>
+            <button class="btn-cam" onclick="toggleCamera();">🎥 Perspectiva/Orto</button>
+            <button class="btn-cam" onclick="cycleMaterial();">🎨 Material</button>
+            <button class="btn-tool" onclick="resetCamera();">🎯 Centrar</button>
+            <button class="btn-tool" onclick="zoomIn();">➕</button>
+            <button class="btn-tool" onclick="zoomOut();">➖</button>
             <button class="btn-export" onclick="exportSTL();">⬇️ STL</button>
-            <button class="btn-debug" onclick="toggleLog();">🖥️ Consola</button>
-            <div style="color:#aaa; font-size:10px; width: 100%; margin-top:5px;">👆 Arrastra: Orbitar | 🖖 Pellizca: Zoom</div>
+            <button class="btn-debug" onclick="toggleLog();">🖥️ DEBUG</button>
         </div>
+        <div id="bbox-info">📐 Dimensiones: Calculando...</div>
         <canvas id="cvs"></canvas>
     </div>
     
@@ -54,33 +59,62 @@
         function toggleLog() { logBox.classList.toggle('fullscreen'); }
         function decodeB64(str) { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
 
-        logToScreen('Paso 1: Motor WebGL Pro (v2.0 Core) arrancado.');
+        logToScreen('Paso 1: Motor CAD Industrial (v2.5) arrancado.');
 
+        // Inicialización Three.js
         const canvas = document.getElementById('cvs');
         const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true, alpha: true});
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / (window.innerHeight*0.8), 0.1, 2000);
         
-        let camRadius = 120; 
-        camera.position.set(camRadius, camRadius, camRadius); camera.lookAt(0, 0, 0);
+        // Cámaras duales (Perspectiva y Ortográfica)
+        let isOrtho = false;
+        let aspect = window.innerWidth / (window.innerHeight*0.8);
+        let camRadius = 120; let d = 100;
+        
+        const cameraPersp = new THREE.PerspectiveCamera(45, aspect, 0.1, 2000);
+        const cameraOrtho = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 0.1, 2000);
+        let activeCamera = cameraPersp;
 
+        function resetCamera() { lon = 45; lat = 45; camRadius = 120; updateCamera(); }
+        resetCamera();
+
+        // Iluminación Profesional
         const ambientLight = new THREE.AmbientLight(0x404040, 1.5); scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1); dirLight.position.set(100, 200, 50); scene.add(dirLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); dirLight.position.set(100, 200, 100); scene.add(dirLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.5); backLight.position.set(-100, -200, -100); scene.add(backLight);
         
-        const gridHelper = new THREE.GridHelper(200, 20, 0x00ff00, 0x113311); scene.add(gridHelper);
-        const axesHelper = new THREE.AxesHelper( 50 ); scene.add(axesHelper); 
+        const gridHelper = new THREE.GridHelper(300, 30, 0x00ff00, 0x113311); scene.add(gridHelper);
+        const axesHelper = new THREE.AxesHelper( 60 ); scene.add(axesHelper); 
 
-        let mainMesh = null; let autoRotate = true; let currentCSG = null; let isWireframe = false;
+        // Materiales Industriales
+        const matGreen = new THREE.MeshStandardMaterial({color: 0x00e676, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide});
+        const matMetal = new THREE.MeshStandardMaterial({color: 0xaaaaaa, roughness: 0.3, metalness: 0.8, side: THREE.DoubleSide});
+        const matGlass = new THREE.MeshStandardMaterial({color: 0x2196f3, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5, side: THREE.DoubleSide});
+        const matWire = new THREE.MeshBasicMaterial({color: 0x00e676, wireframe: true});
+        
+        const materials = [matGreen, matMetal, matGlass, matWire];
+        let currentMatIndex = 0;
 
-        let isDragging = false, prevX = 0, prevY = 0, lon = 45, lat = 45;
-        let initialPinchDist = null;
+        let mainMesh = null; let autoRotate = true; let currentCSG = null;
 
+        // Controles de UI
+        function toggleCamera() { 
+            isOrtho = !isOrtho; activeCamera = isOrtho ? cameraOrtho : cameraPersp; 
+            logToScreen(isOrtho ? 'Modo: Cámara Ortográfica' : 'Modo: Perspectiva Cónica');
+            updateCamera(); 
+        }
+        function cycleMaterial() {
+            currentMatIndex = (currentMatIndex + 1) % materials.length;
+            if(mainMesh) mainMesh.material = materials[currentMatIndex];
+        }
         const zoomIn = () => { camRadius = Math.max(10, camRadius - 20); updateCamera(); };
         const zoomOut = () => { camRadius = Math.min(800, camRadius + 20); updateCamera(); };
-        const toggleWireframe = () => { if(mainMesh) { isWireframe = !isWireframe; mainMesh.material.wireframe = isWireframe; } };
 
+        // Táctil y Ratón
+        let isDragging = false, prevX = 0, prevY = 0, lon = 45, lat = 45;
+        let initialPinchDist = null;
+        
         canvas.addEventListener('wheel', (e) => { camRadius += e.deltaY * 0.1; camRadius = Math.max(10, Math.min(800, camRadius)); updateCamera(); });
-
         canvas.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; autoRotate=false;});
         window.addEventListener('mouseup', () => isDragging = false);
         window.addEventListener('mousemove', e => {
@@ -88,10 +122,7 @@
             lon -= (e.clientX - prevX) * 0.5; lat += (e.clientY - prevY) * 0.5;
             lat = Math.max(-85, Math.min(85, lat)); prevX = e.clientX; prevY = e.clientY; updateCamera();
         });
-
-        canvas.addEventListener('touchstart', e => { 
-            if(e.touches.length === 1) { isDragging = true; prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; autoRotate=false; }
-        });
+        canvas.addEventListener('touchstart', e => { if(e.touches.length === 1) { isDragging = true; prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; autoRotate=false; } });
         window.addEventListener('touchend', () => { isDragging = false; initialPinchDist = null; });
         window.addEventListener('touchmove', e => {
             if(e.touches.length === 2) { 
@@ -106,16 +137,39 @@
 
         function updateCamera() {
             const phi = (90 - lat) * (Math.PI / 180); const theta = lon * (Math.PI / 180);
-            camera.position.x = camRadius * Math.sin(phi) * Math.cos(theta);
-            camera.position.y = camRadius * Math.cos(phi);
-            camera.position.z = camRadius * Math.sin(phi) * Math.sin(theta);
-            camera.lookAt(0, 0, 0);
+            
+            // Posicionar ambas cámaras por igual
+            let px = camRadius * Math.sin(phi) * Math.cos(theta);
+            let py = camRadius * Math.cos(phi);
+            let pz = camRadius * Math.sin(phi) * Math.sin(theta);
+            
+            cameraPersp.position.set(px, py, pz); cameraPersp.lookAt(0, 0, 0);
+            cameraOrtho.position.set(px, py, pz); cameraOrtho.lookAt(0, 0, 0);
+            
+            // Escalar ortográfica basada en el zoom
+            let zoomFactor = camRadius / 100;
+            cameraOrtho.left = -d * aspect * zoomFactor; cameraOrtho.right = d * aspect * zoomFactor;
+            cameraOrtho.top = d * zoomFactor; cameraOrtho.bottom = -d * zoomFactor;
+            cameraOrtho.updateProjectionMatrix();
         }
 
         window.addEventListener('resize', () => {
             let h = logBox.classList.contains('fullscreen') ? window.innerHeight : window.innerHeight*0.8;
-            camera.aspect = window.innerWidth / h; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, h);
+            aspect = window.innerWidth / h;
+            cameraPersp.aspect = aspect; cameraPersp.updateProjectionMatrix();
+            cameraOrtho.left = -d * aspect; cameraOrtho.right = d * aspect; cameraOrtho.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, h);
+            updateCamera();
         });
+
+        function updateBoundingBox(geom) {
+            geom.computeBoundingBox();
+            let bbox = geom.boundingBox;
+            let sizeX = Math.abs(bbox.max.x - bbox.min.x).toFixed(1);
+            let sizeY = Math.abs(bbox.max.y - bbox.min.y).toFixed(1);
+            let sizeZ = Math.abs(bbox.max.z - bbox.min.z).toFixed(1);
+            document.getElementById('bbox-info').innerText = `📐 Size: X:${sizeX} Y:${sizeY} Z:${sizeZ} mm`;
+        }
 
         function buildGeometry(code) {
             logToScreen('Paso 8: Evaluando código CSG Javascript...');
@@ -136,40 +190,40 @@
                 geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
                 geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
                 
-                const material = new THREE.MeshStandardMaterial({color: 0x00e676, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide, wireframe: isWireframe});
-                mainMesh = new THREE.Mesh(geom, material);
+                mainMesh = new THREE.Mesh(geom, materials[currentMatIndex]);
                 scene.add(mainMesh);
-                logToScreen('✓ Malla WebGL generada con éxito.');
+                updateBoundingBox(geom);
+                
+                logToScreen('✓ Malla WebGL Industrial generada.');
             } catch(e) { 
                 logToScreen('ERROR EN CÓDIGO: ' + e.message, true); 
-                logToScreen('Abre la Consola para leer el error completo y corregir el código.', true);
             }
         }
 
         function exportSTL() {
             if(!currentCSG) return;
             logToScreen('Generando archivo STL sólido...');
-            let stl = "solid nexus_model\n";
+            let stl = "solid nexus_industrial_model\n";
             currentCSG.toPolygons().forEach(poly => {
                 for(let i=2; i<poly.vertices.length; i++) {
                     let v0 = poly.vertices[0].pos, v1 = poly.vertices[i-1].pos, v2 = poly.vertices[i].pos, n = poly.plane.normal;
                     stl += `facet normal ${n.x} ${n.y} ${n.z}\nouter loop\nvertex ${v0.x} ${v0.y} ${v0.z}\nvertex ${v1.x} ${v1.y} ${v1.z}\nvertex ${v2.x} ${v2.y} ${v2.z}\nendloop\nendfacet\n`;
                 }
             });
-            stl += "endsolid nexus_model\n";
+            stl += "endsolid nexus_industrial_model\n";
             const blob = new Blob([stl], {type: 'text/plain'});
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'nexus_modelo.stl'; link.click();
+            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'nexus_industrial.stl'; link.click();
             logToScreen('✓ Archivo STL descargado.');
         }
 
         function animate() {
-            if(autoRotate) { lon += 0.5; updateCamera(); }
-            renderer.render(scene, camera);
+            if(autoRotate) { lon += 0.3; updateCamera(); }
+            renderer.render(scene, activeCamera);
             requestAnimationFrame(animate);
         }
 
         fetch('/api/get_code_b64.json').then(r => r.json()).then(data => {
-            if (data.code_b64) { buildGeometry(decodeB64(data.code_b64)); animate(); }
+            if (data.code_b64) { buildGeometry(decodeB64(data.code_b64)); updateCamera(); animate(); }
         }).catch(e => logToScreen('ERROR API: ' + e.message, true));
     </script>
 </body>
