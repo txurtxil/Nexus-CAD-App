@@ -106,14 +106,14 @@ def main(page: ft.Page):
             txt_code.value = t
             page.update()
 
-        # FIX: PopupMenuItem usando 'content' para evitar error de 'text'
+        # === BOTÓN DE PLANTILLAS CORREGIDO ===
         btn_templates = ft.PopupMenuButton(
             items=[
                 ft.PopupMenuItem(content=ft.Text("📦 Carcasa"), on_click=lambda _: load_template(T_CARCASA)),
                 ft.PopupMenuItem(content=ft.Text("⚙️ Engranaje"), on_click=lambda _: load_template(T_ENGRARE)),
                 ft.PopupMenuItem(content=ft.Text("📱 Peana"), on_click=lambda _: load_template(T_PEANA)),
             ],
-            content=ft.Row([ft.Icon(ft.icons.MENU_BOOK), ft.Text("Plantillas")])
+            content=ft.Row([ft.Icon(ft.icons.BOOK), ft.Text("Plantillas")])   # ← AQUÍ ESTABA EL ERROR
         )
 
         # --- GESTOR DE ARCHIVOS ---
