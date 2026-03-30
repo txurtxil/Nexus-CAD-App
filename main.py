@@ -10,13 +10,11 @@ warnings.simplefilter("ignore", DeprecationWarning)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
-# Determinar carpeta de proyectos segura
 EXPORT_DIR = os.path.join(BASE_DIR, "nexus_proyectos")
 try:
     if not os.path.exists(EXPORT_DIR):
         os.makedirs(EXPORT_DIR, exist_ok=True)
 except:
-    # Fallback para APKs en carpetas restringidas
     EXPORT_DIR = os.path.join(tempfile.gettempdir(), "nexus_proyectos")
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
@@ -75,10 +73,12 @@ def main(page: ft.Page):
 
         status = ft.Text("Sistema Online v2.8.5", size=10, color="grey600")
 
-        # --- SISTEMA DE PORTAPAPELES (Compatibilidad Máxima) ---
+        # --- SISTEMA DE PORTAPAPELES ---
         def copy_to_clipboard(text):
             try:
-                if hasattr(page, 'set_clipboard'):
+                if hasattr(page, 'clipboard'):
+                    page.clipboard = text  # ✅ Nueva forma en Flet moderno
+                elif hasattr(page, 'set_clipboard'):
                     page.set_clipboard(text)
                 else:
                     subprocess.run(['termux-clipboard-set'], input=text.encode('utf-8'))
@@ -105,14 +105,13 @@ def main(page: ft.Page):
             txt_code.value = t
             page.update()
 
-        # === BOTÓN DE PLANTILLAS (SIN ICONOS DE FLET - usa emoji) ===
         btn_templates = ft.PopupMenuButton(
             items=[
                 ft.PopupMenuItem(content=ft.Text("📦 Carcasa"), on_click=lambda _: load_template(T_CARCASA)),
                 ft.PopupMenuItem(content=ft.Text("⚙️ Engranaje"), on_click=lambda _: load_template(T_ENGRARE)),
                 ft.PopupMenuItem(content=ft.Text("📱 Peana"), on_click=lambda _: load_template(T_PEANA)),
             ],
-            content=ft.Row([ft.Text("📖", size=20), ft.Text("Plantillas")])   # ← SOLUCIÓN DEFINITIVA
+            content=ft.Row([ft.Text("📖", size=20), ft.Text("Plantillas")])
         )
 
         # --- GESTOR DE ARCHIVOS ---
@@ -163,7 +162,7 @@ def main(page: ft.Page):
             update_files()
 
         editor_tab = ft.Column([
-            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, width=float('inf'), bgcolor="green900", color="white"),
+            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, expand=True, bgcolor="green900", color="white"),  # ✅ float('inf') → expand=True
             ft.Row([btn_templates, ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project(), bgcolor="blue900")]),
             txt_code
         ], expand=True)
@@ -173,11 +172,21 @@ def main(page: ft.Page):
             ft.TextField(label="Prompt CAD", value="Genera código CSG.js para una pieza técnica...", read_only=True),
         ], expand=True, scroll="auto")
 
+        # ✅ CORRECCIÓN PRINCIPAL: text → label en ft.Tab
         tabs = ft.Tabs(selected_index=0, tabs=[
-            ft.Tab(text="EDITOR", content=editor_tab),
-            ft.Tab(text="VISOR", content=ft.Container(content=ft.ElevatedButton("LANZAR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/"), alignment=ft.alignment.center)),
-            ft.Tab(text="ARCHIVOS", content=ft.Column([ft.Text("Mis Proyectos"), file_list], expand=True)),
-            ft.Tab(text="IA", content=prompts_tab)
+            ft.Tab(label="EDITOR", content=editor_tab),  # ✅ label en lugar de text
+            ft.Tab(
+                label="VISOR", 
+                content=ft.Container(
+                    content=ft.ElevatedButton(
+                        "LANZAR VISOR", 
+                        on_click=lambda _: page.launch_url("http://127.0.0.1:" + str(LOCAL_PORT) + "/")  # ✅ on_click + launch_url
+                    ), 
+                    alignment=ft.alignment.center
+                )
+            ),
+            ft.Tab(label="ARCHIVOS", content=ft.Column([ft.Text("Mis Proyectos"), file_list], expand=True)),
+            ft.Tab(label="IA", content=prompts_tab)
         ], expand=True, on_change=lambda _: update_files())
 
         page.add(ft.SafeArea(content=ft.Column([tabs, status], expand=True)))
