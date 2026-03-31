@@ -61,17 +61,17 @@ def start_server():
 threading.Thread(target=start_server, daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL (COMPATIBILIDAD FLET 0.23+ POSICIONAL)
+# APLICACIÓN PRINCIPAL (SISTEMA DE NAVEGACIÓN PROPIO)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v3.3"
+        page.title = "NEXUS CAD v3.4"
         page.theme_mode = "dark"
-        page.padding = 0
+        page.padding = 10
         
-        status = ft.Text("Sistema Acorazado Activo", color="green")
+        status = ft.Text("Navegacion Bare-Metal Activa", color="green")
 
-        # --- PORTAPAPELES (Triple Capa Silenciosa) ---
+        # --- PORTAPAPELES ---
         def copy_to_clipboard(text_to_copy):
             success = False
             try:
@@ -97,7 +97,7 @@ def main(page: ft.Page):
                 status.value = "❌ Error portapapeles."
             page.update()
 
-        # --- PLANTILLAS BÁSICAS ---
+        # --- PLANTILLAS ---
         T_CARCASA = "function main() {\n  var ext = CSG.cube({center:[0,0,10], radius:[40,25,10]});\n  var int = CSG.cube({center:[0,0,12], radius:[38,23,10]});\n  return ext.subtract(int);\n}"
         T_ENGRARE = "function main() {\n  var b = CSG.cylinder({start:[0,0,0], end:[0,0,5], radius:20});\n  return b;\n}"
         T_PEANA = "function main() {\n  var base = CSG.cube({center: [0, 0, 5], radius: [60, 40, 5]});\n  var soporte = CSG.cube({center: [0, 10, 25], radius: [60, 5, 25]});\n  return base.union(soporte);\n}"
@@ -124,9 +124,9 @@ def main(page: ft.Page):
                 def make_copy(name): return lambda _: copy_file_content(name)
                 def make_del(name): return lambda _: delete_file(name)
 
-                btn_load = ft.ElevatedButton("▶ Abrir", on_click=make_load(f))
-                btn_copy = ft.ElevatedButton("📋 Copiar", on_click=make_copy(f))
-                btn_del = ft.ElevatedButton("🗑️ Borrar", on_click=make_del(f))
+                btn_load = ft.ElevatedButton("▶", on_click=make_load(f))
+                btn_copy = ft.ElevatedButton("📋", on_click=make_copy(f))
+                btn_del = ft.ElevatedButton("🗑️", on_click=make_del(f))
 
                 row = ft.Row([ft.Text(f[:15], expand=True), btn_load, btn_copy, btn_del])
                 file_list.controls.append(ft.Container(content=row, padding=5))
@@ -135,7 +135,7 @@ def main(page: ft.Page):
         def load_file_content(name):
             try:
                 with open(os.path.join(EXPORT_DIR, name), "r") as f: txt_code.value = f.read()
-                tabs.selected_index = 0
+                set_tab(0) # Va al Editor
                 status.value = "✓ " + name + " cargado."
             except:
                 status.value = "❌ Error al leer."
@@ -160,7 +160,7 @@ def main(page: ft.Page):
         def run_render():
             global LATEST_CODE_B64
             LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
-            tabs.selected_index = 1
+            set_tab(1) # Va al Visor
             page.update()
 
         def save_project():
@@ -172,46 +172,53 @@ def main(page: ft.Page):
                 status.value = "❌ Error de escritura."
             update_files()
 
-        # --- INTERFAZ GLOBAL ---
-        btn_compile = ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render())
-        btn_save = ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project())
-
-        editor_tab = ft.Column([
-            btn_compile,
-            ft.Row([btn_save, ft.Text("Plantillas:")]),
+        # =========================================================
+        # VISTAS INDEPENDIENTES (El nuevo sistema de Pestañas)
+        # =========================================================
+        view_editor = ft.Column([
+            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render()),
+            ft.Row([ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project()), ft.Text("Plantillas:")]),
             row_templates,
             txt_code
         ], expand=True)
 
-        prompts_tab = ft.Column([
-            ft.Text("Prompts para enviar a la IA:"),
-            ft.TextField(label="Carcasa Técnica", value="Genera codigo Javascript CSG.js para carcasa 90x60x30mm con vaciado interno de pared 2mm. Usa center:[x,y,z].", multiline=True),
+        view_visor = ft.Container(content=ft.ElevatedButton("ABRIR VISOR NATIVO", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/"))
+        
+        view_archivos = ft.Column([ft.Text("Mis Proyectos"), file_list], expand=True)
+        
+        view_ia = ft.Column([
+            ft.Text("Prompts para enviar a tu IA:"),
+            ft.TextField(label="Carcasa Técnica", value="Genera codigo Javascript CSG.js para carcasa 90x60x30mm con vaciado pared 2mm. Usa center:[x,y,z].", multiline=True),
         ], expand=True)
 
-        btn_visor = ft.ElevatedButton("ABRIR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/")
-        visor_tab = ft.Container(content=btn_visor)
+        # =========================================================
+        # MOTOR DE NAVEGACIÓN PERSONALIZADO (Cero Crashes)
+        # =========================================================
+        # Este contenedor cambiará su contenido dinámicamente según el botón que pulses
+        main_container = ft.Container(content=view_editor, expand=True)
 
-        archivos_tab = ft.Column([ft.Text("Proyectos"), file_list], expand=True)
+        def set_tab(idx):
+            if idx == 0: main_container.content = view_editor
+            elif idx == 1: main_container.content = view_visor
+            elif idx == 2: main_container.content = view_archivos
+            elif idx == 3: main_container.content = view_ia
+            page.update()
 
-        # FIX SUPREMO: `ft.Tab()` ahora toma el string ("EDITOR") puramente posicional sin `text=`
-        # FIX SUPREMO: `ft.Tabs()` ahora toma la lista puramente posicional sin `tabs=`
-        tabs = ft.Tabs(
-            [
-                ft.Tab("EDITOR", content=editor_tab),
-                ft.Tab("VISOR", content=visor_tab),
-                ft.Tab("ARCHIVOS", content=archivos_tab),
-                ft.Tab("IA", content=prompts_tab)
-            ],
-            selected_index=0, 
-            expand=True
-        )
+        # Nuestra barra de navegación fabricada a mano con botones
+        nav_bar = ft.Row([
+            ft.ElevatedButton("💻 EDITOR", on_click=lambda _: set_tab(0)),
+            ft.ElevatedButton("👁️ VISOR", on_click=lambda _: set_tab(1)),
+            ft.ElevatedButton("📁 ARCHIVOS", on_click=lambda _: (update_files(), set_tab(2))),
+            ft.ElevatedButton("🧠 IA", on_click=lambda _: set_tab(3)),
+        ])
 
-        page.add(ft.Container(content=ft.Column([tabs, status], expand=True), padding=10, expand=True))
+        # Renderizado Final
+        page.add(nav_bar, main_container, status)
         update_files()
 
     except Exception:
         page.clean()
-        page.add(ft.Text("CRASH:\n" + traceback.format_exc(), color="red"))
+        page.add(ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red"))
         page.update()
 
 if __name__ == "__main__":
