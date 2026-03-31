@@ -1,6 +1,8 @@
 import flet as ft
 import os, base64, json, threading, http.server, socket, time, warnings, subprocess, tempfile, traceback
-import requests # <- IMPLEMENTADO TU SISTEMA ROBUSTO
+import urllib.request
+from urllib.error import HTTPError
+import ssl
 
 warnings.simplefilter("ignore", DeprecationWarning)
 
@@ -57,15 +59,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.0.6 (THE ARCHITECT UPDATE)
+# APLICACIÓN PRINCIPAL v5.0.7 (ZERO-DEPENDENCY)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v5.0.6"
+        page.title = "NEXUS CAD v5.0.7"
         page.theme_mode = "dark"
         page.padding = 0
 
-        status = ft.Text("NEXUS v5.0.6 | Motor 'Requests' Activo", color="green")
+        status = ft.Text("NEXUS v5.0.7 | Motor de Red Nativo Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -149,20 +151,19 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # MÓDULO: AGENTE IA (USANDO LIBRERÍA REQUESTS + TEXTO LIBRE)
+        # MÓDULO: AGENTE IA (URLLIB CON BYPASS DE PROXY PARA ANDROID)
         # =========================================================
         def load_config():
             try:
                 if os.path.exists(CONFIG_FILE):
                     with open(CONFIG_FILE, "r") as f: return json.load(f)
             except: pass
-            return {"ai_api_key": "", "ai_provider": "Groq", "ai_model": "llama3-70b-8192"}
+            return {"ai_api_key": "", "ai_provider": "Groq", "ai_model": "llama-3.3-70b-versatile"}
 
         config_data = load_config()
         
         provider_dd = ft.Dropdown(options=[ft.dropdown.Option("Groq"), ft.dropdown.Option("OpenRouter")], value=config_data.get("ai_provider", "Groq"), width=120)
         api_key_input = ft.TextField(label="API Key", value=config_data.get("ai_api_key", ""), password=True, can_reveal_password=True, expand=True)
-        # TEXTO LIBRE: Pon el modelo que quieras, el sistema ya no te limita.
         model_input = ft.TextField(label="Modelo (Ej: llama-3.3-70b-versatile)", value=config_data.get("ai_model", "llama-3.3-70b-versatile"), expand=True)
 
         def save_config(e):
@@ -223,11 +224,21 @@ REGLAS ESTRICTAS:
                         ]
                     }
                     
-                    # MAGIA BASADA EN TU SCRIPT MULTIMEDIA
-                    response = requests.post(url, headers=headers, json=data, timeout=25)
+                    # MAGIA ANTI-CUELGUES PARA ANDROID
+                    # 1. Ignorar certificados SSL para que no se congele buscando rutas
+                    ctx = ssl.create_default_context()
+                    ctx.check_hostname = False
+                    ctx.verify_mode = ssl.CERT_NONE
                     
-                    if response.status_code == 200:
-                        res_data = response.json()
+                    # 2. ProxyHandler vacío: El fix definitivo para el bucle infinito de Android
+                    proxy_handler = urllib.request.ProxyHandler({})
+                    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx), proxy_handler)
+                    
+                    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
+                    
+                    # Abrir la conexión con el Opener blindado
+                    with opener.open(req, timeout=25) as response:
+                        res_data = json.loads(response.read().decode('utf-8'))
                         ai_text = res_data['choices'][0]['message']['content']
                         
                         extracted_code = ""
@@ -250,13 +261,10 @@ REGLAS ESTRICTAS:
                             content=ft.Column(bot_controls),
                             bgcolor="#212121", padding=10, border_radius=8
                         ))
-                    else:
-                        # LOGS DE ERROR EXACTOS CON REQUESTS
-                        chat_history.controls.append(ft.Container(
-                            ft.Text(f"❌ Error HTTP {response.status_code}:\n{response.text}", color="red", size=12), 
-                            bgcolor="#424242", padding=10
-                        ))
 
+                except HTTPError as e:
+                    error_body = e.read().decode('utf-8')
+                    chat_history.controls.append(ft.Container(ft.Text(f"❌ HTTP Error {e.code}:\n{error_body}", color="red", size=12), bgcolor="#424242", padding=10))
                 except Exception as ex:
                     error_trace = traceback.format_exc()
                     chat_history.controls.append(ft.Container(
@@ -267,7 +275,6 @@ REGLAS ESTRICTAS:
                         bgcolor="#424242", padding=10
                     ))
                 finally:
-                    # Este finally JAMÁS fallará ahora que usamos requests
                     loading_ring.visible = False
                     page.update()
 
