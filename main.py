@@ -1,5 +1,5 @@
 import flet as ft
-import os, base64, json, threading, http.server, socket, time, warnings, tempfile, traceback
+import os, base64, json, threading, http.server, socket, time, warnings, subprocess, tempfile, traceback
 from urllib.parse import urlparse
 
 warnings.simplefilter("ignore", DeprecationWarning)
@@ -56,15 +56,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v4.1
+# APLICACIÓN PRINCIPAL v4.2
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v4.1"
+        page.title = "NEXUS CAD v4.2"
         page.theme_mode = "dark"
         page.padding = 0 
         
-        status = ft.Text("Sistema Acorazado v4.1 Activo", color="green")
+        status = ft.Text("Sistema ToolKit v4.2 Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -89,6 +89,21 @@ def main(page: ft.Page):
             )
             open_dialog(dlg_copy)
 
+        def copy_text(text_to_copy):
+            try:
+                page.set_clipboard(str(text_to_copy))
+                status.value = "✓ Código copiado."
+                status.color = "green"
+            except:
+                try:
+                    subprocess.run(['termux-clipboard-set'], input=str(text_to_copy).encode('utf-8'))
+                    status.value = "✓ Código copiado (Termux)."
+                    status.color = "green"
+                except:
+                    status.value = "❌ Error al copiar."
+                    status.color = "red"
+            page.update()
+
         # --- PLANTILLAS JS-CSG RÁPIDAS ---
         T_CARCASA = "function main() {\n  var ext = CSG.cube({center:[0,0,10], radius:[40,25,10]});\n  var int = CSG.cube({center:[0,0,12], radius:[38,23,10]});\n  return ext.subtract(int);\n}"
         T_ENGRARE = "function main() {\n  var b = CSG.cylinder({start:[0,0,0], end:[0,0,5], radius:20, slices:32});\n  var h = CSG.cylinder({start:[0,0,-1], end:[0,0,6], radius:5, slices:16});\n  return b.subtract(h);\n}"
@@ -96,18 +111,44 @@ def main(page: ft.Page):
 
         txt_code = ft.TextField(label="Código JS-CSG", multiline=True, expand=True, value=T_CARCASA)
 
-        # FIX: Función explícita de carga de plantillas
         def load_template(t):
             txt_code.value = t
-            txt_code.update() # Forzar refresco UI específico
+            txt_code.update() 
             status.value = "✓ Plantilla cargada."
             status.update()
 
+        # --- NUEVA FUNCIÓN: LIMPIAR EDITOR ---
+        def clear_editor():
+            txt_code.value = "function main() {\n  // Inicia tu diseño aquí\n  \n  return CSG.cube({center:[0,0,0], radius:[10,10,10]});\n}"
+            txt_code.update()
+            status.value = "✓ Editor vaciado."
+            status.color = "green"
+            status.update()
+
+        # --- NUEVA FUNCIÓN: INYECTAR SNIPPETS ---
+        def inject_snippet(code_snippet):
+            # Añade el fragmento al final del texto actual para no borrar lo que haya
+            txt_code.value = txt_code.value + "\n" + code_snippet
+            txt_code.update()
+            status.value = "✓ Snippet inyectado."
+            status.color = "cyan"
+            status.update()
+
+        # Botones de Plantillas
         btn_c = ft.ElevatedButton("📦 Carcasa", on_click=lambda _: load_template(T_CARCASA))
         btn_e = ft.ElevatedButton("⚙️ Engranaje", on_click=lambda _: load_template(T_ENGRARE))
         btn_p = ft.ElevatedButton("📱 Peana", on_click=lambda _: load_template(T_PEANA))
-        
         row_templates = ft.Row([btn_c, btn_e, btn_p], scroll="auto")
+
+        # Barra de Snippets Rápidos
+        row_snippets = ft.Row([
+            ft.Text("Inyectar:", color="grey", size=12),
+            ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[5,5,5]});"), bgcolor="#263238", color="white"),
+            ft.ElevatedButton("+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});"), bgcolor="#263238", color="white"),
+            ft.ElevatedButton("+ Esfera", on_click=lambda _: inject_snippet("  var esf = CSG.sphere({center:[0,0,0], radius:5, slices:32});"), bgcolor="#263238", color="white"),
+            ft.ElevatedButton("- Restar", on_click=lambda _: inject_snippet("  var final = pieza1.subtract(pieza2);"), bgcolor="#4e342e", color="white"),
+            ft.ElevatedButton("+ Unir", on_click=lambda _: inject_snippet("  var final = pieza1.union(pieza2);"), bgcolor="#004d40", color="white"),
+        ], scroll="auto")
 
         # --- GESTOR DE ARCHIVOS ---
         file_list = ft.ListView(expand=True, spacing=10)
@@ -154,7 +195,6 @@ def main(page: ft.Page):
 
         def prompt_rename(old_name):
             txt_new = ft.TextField(label="Nuevo nombre (sin .jscad)")
-            
             def do_rename(e):
                 if txt_new.value:
                     try:
@@ -196,16 +236,15 @@ def main(page: ft.Page):
         # =========================================================
         # CARPETAS DE IA (SISTEMA ACCORDION ANTI-ALUCINACIONES)
         # =========================================================
-        # REGLA MAESTRA PARA LA IA:
-        AI_RULE = " REGLA CRÍTICA: Escribe en Javascript puro para la librería CSG.js. NUNCA uses comandos como cylinder() o translate() sueltos. Usa SIEMPRE primitivas absolutas: CSG.cube({center:[x,y,z], radius:[x,y,z]}) y CSG.cylinder({start:[x,y,z], end:[x,y,z], radius:R, slices:N}). Devuelve la pieza en 'function main() { ... return pieza; }'. "
+        AI_RULE = " REGLA CRÍTICA: Escribe en Javascript puro para CSG.js. NUNCA uses cylinder() o translate() sueltos. Usa primitivas absolutas: CSG.cube({center:[x,y,z], radius:[x,y,z]}) y CSG.cylinder({start:[x,y,z], end:[x,y,z], radius:R, slices:N}). Devuelve la pieza final en 'function main() { ... return pieza; }'."
 
         def create_folder(icon, title, prompts):
             controls = []
             for name, text in prompts:
                 controls.append(ft.Text(name, color="amber", weight="bold"))
-                # Inyectamos la regla maestra en cada prompt
                 full_prompt = text + AI_RULE
                 controls.append(ft.TextField(value=full_prompt, multiline=True, read_only=True, text_size=12))
+                controls.append(ft.ElevatedButton("📋 Copiar", on_click=lambda e, txt=full_prompt: copy_text(txt)))
                 controls.append(ft.Container(height=15))
 
             content_col = ft.Column(controls, visible=False)
@@ -219,21 +258,17 @@ def main(page: ft.Page):
 
         ia_electronica = [
             ("Caja Raspberry Pi", "Actúa como ingeniero CAD. Haz una caja de 90x60x30mm. Añade agujeros laterales para USB restando cubos."),
-            ("Pasacables de Escritorio", "Genera un cilindro hueco paramétrico (radio ext 30mm, int 25mm, alto 20mm) con una ranura lateral para cables."),
         ]
-        
         ia_hogar = [
-            ("Posavasos de Panal", "Diseña un posavasos redondo de radio 45mm y grosor 5mm. Usa un bucle 'for' en JS para generar hexágonos (CSG.cylinder con slices:6) y únelos todos en una variable antes de restarlos a la base."),
-            ("Soporte para Móvil Inclinado", "Crea un soporte de smartphone. Usa un cubo inclinado (matemáticamente con restas) o varios bloques unidos para formar un respaldo a 60 grados."),
+            ("Posavasos de Panal", "Diseña un posavasos redondo de radio 45mm y grosor 5mm. Usa un bucle 'for' para generar hexágonos (slices:6) y únelos todos en una variable antes de restarlos a la base."),
         ]
-        
-        ia_deportes = [
-            ("Silbato Paramétrico", "Diseña un silbato deportivo. Mezcla un cilindro hueco como cámara de aire y un rectángulo como boquilla."),
-        ]
-        
         ia_herramientas = [
             ("Soporte L con Refuerzo", "Crea un soporte en forma de L de 50x50x50mm. Añade un bloque oblicuo como refuerzo interno. Incluye 2 agujeros pasantes."),
-            ("Organizador de Brocas", "Haz un bloque sólido de 100x30x20mm. Usa un bucle for para restar cilindros a lo largo del bloque (radios de 2 a 6mm)."),
+        ]
+        # Nueva categoría avanzada
+        ia_avanzada = [
+            ("Rejilla Paramétrica", "Crea un cubo de 100x100x5mm. Usa dos bucles 'for' anidados (ejes X e Y) para restar cilindros de radio 3mm cada 10mm, creando una rejilla de ventilación perfecta."),
+            ("Engranaje Matemático", "Crea un cilindro base de radio 30mm y altura 10mm. Usa un bucle 'for' (de 0 a Math.PI*2) y Math.cos/Math.sin para instanciar 16 cubos pequeños en el borde como dientes. Únelos con la base usando .union()."),
         ]
 
         # =========================================================
@@ -243,9 +278,10 @@ def main(page: ft.Page):
             ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), color="white", bgcolor="#004d40", height=50),
             ft.Row([
                 ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project(), color="white", bgcolor="#0d47a1"),
+                ft.ElevatedButton("🗑️ LIMPIAR", on_click=lambda _: clear_editor(), color="white", bgcolor="#b71c1c"), # NUEVO BOTÓN
             ], scroll="auto"),
-            ft.Text("Plantillas rápidas:", color="grey"),
-            # FIX: Restaurada la fila de plantillas al editor visible
+            row_snippets, # NUEVA BARRA DE HERRAMIENTAS
+            ft.Text("Plantillas rápidas:", color="grey", size=12),
             row_templates,
             txt_code
         ], expand=True)
@@ -261,11 +297,10 @@ def main(page: ft.Page):
         
         view_ia = ft.Column([
             ft.Text("Catálogo de Prompts IA:", weight="bold", color="cyan"),
-            ft.Text("Manten pulsado para copiar. Llevan una regla oculta anti-errores.", color="grey", size=11),
             create_folder("⚡", "Electrónica y PCB", ia_electronica),
             create_folder("🏠", "Hogar y Decoración", ia_hogar),
             create_folder("🔧", "Herramientas y Taller", ia_herramientas),
-            create_folder("🚴", "Deportes y Outdoors", ia_deportes),
+            create_folder("⚙️", "Mecanismos Paramétricos", ia_avanzada), # NUEVA CARPETA
         ], expand=True, scroll="auto")
 
         # =========================================================
