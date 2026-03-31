@@ -1,2 +1,1 @@
-flet>=0.83.0
-flet-webview>=0.83.0
+requests
