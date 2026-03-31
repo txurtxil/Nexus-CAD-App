@@ -61,15 +61,14 @@ def start_server():
 threading.Thread(target=start_server, daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL (COMPATIBLE FLET 0.23+)
+# APLICACIÓN PRINCIPAL (COMPATIBILIDAD FLET 0.23+ POSICIONAL)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v3.2"
+        page.title = "NEXUS CAD v3.3"
         page.theme_mode = "dark"
         page.padding = 0
         
-        # FIX: Pasado de forma directa sin usar 'value='
         status = ft.Text("Sistema Acorazado Activo", color="green")
 
         # --- PORTAPAPELES (Triple Capa Silenciosa) ---
@@ -109,12 +108,10 @@ def main(page: ft.Page):
             txt_code.value = t
             page.update()
 
-        # FIX: Eliminado 'text=' de los ElevatedButtons. Ahora se pasa directo ("📦 Carcasa").
         btn_c = ft.ElevatedButton("📦 Carcasa", on_click=lambda _: load_template(T_CARCASA))
         btn_e = ft.ElevatedButton("⚙️ Engranaje", on_click=lambda _: load_template(T_ENGRARE))
         btn_p = ft.ElevatedButton("📱 Peana", on_click=lambda _: load_template(T_PEANA))
         
-        # FIX: Eliminado 'controls='
         row_templates = ft.Row([btn_c, btn_e, btn_p], wrap=True)
 
         # --- GESTOR DE ARCHIVOS ---
@@ -127,7 +124,6 @@ def main(page: ft.Page):
                 def make_copy(name): return lambda _: copy_file_content(name)
                 def make_del(name): return lambda _: delete_file(name)
 
-                # FIX: Botones directos
                 btn_load = ft.ElevatedButton("▶ Abrir", on_click=make_load(f))
                 btn_copy = ft.ElevatedButton("📋 Copiar", on_click=make_copy(f))
                 btn_del = ft.ElevatedButton("🗑️ Borrar", on_click=make_del(f))
@@ -197,14 +193,16 @@ def main(page: ft.Page):
 
         archivos_tab = ft.Column([ft.Text("Proyectos"), file_list], expand=True)
 
+        # FIX SUPREMO: `ft.Tab()` ahora toma el string ("EDITOR") puramente posicional sin `text=`
+        # FIX SUPREMO: `ft.Tabs()` ahora toma la lista puramente posicional sin `tabs=`
         tabs = ft.Tabs(
+            [
+                ft.Tab("EDITOR", content=editor_tab),
+                ft.Tab("VISOR", content=visor_tab),
+                ft.Tab("ARCHIVOS", content=archivos_tab),
+                ft.Tab("IA", content=prompts_tab)
+            ],
             selected_index=0, 
-            tabs=[
-                ft.Tab(text="EDITOR", content=editor_tab),
-                ft.Tab(text="VISOR", content=visor_tab),
-                ft.Tab(text="ARCHIVOS", content=archivos_tab),
-                ft.Tab(text="IA", content=prompts_tab)
-            ], 
             expand=True
         )
 
