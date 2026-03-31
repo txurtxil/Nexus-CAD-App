@@ -17,6 +17,8 @@ except:
     EXPORT_DIR = os.path.join(tempfile.gettempdir(), "nexus_proyectos")
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
+CONFIG_FILE = os.path.join(EXPORT_DIR, "nexus_config.json")
+
 # =========================================================
 # MOTOR SERVIDOR LOCAL
 # =========================================================
@@ -55,15 +57,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.0.1 (HOTFIX)
+# APLICACIÓN PRINCIPAL v5.0.2 (HOTFIX STORAGE)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v5.0.1"
+        page.title = "NEXUS CAD v5.0.2"
         page.theme_mode = "dark"
         page.padding = 0
 
-        status = ft.Text("NEXUS v5.0.1 | Módulo IA Activo", color="green")
+        status = ft.Text("NEXUS v5.0.2 | Módulo IA Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -107,7 +109,6 @@ def main(page: ft.Page):
                     page.update()
 
         # --- EDITOR CAD ---
-        # FIX: Inicialización directa en el constructor para evitar el crash del update()
         DEFAULT_CODE = "function main() {\n  return CSG.cube({center:[0,0,0], radius:[10,10,10]});\n}"
         txt_code = ft.TextField(label="Código JS-CSG", multiline=True, expand=True, value=DEFAULT_CODE)
 
@@ -145,6 +146,8 @@ def main(page: ft.Page):
         def update_files():
             file_list.controls.clear()
             for f in reversed(sorted(os.listdir(EXPORT_DIR))):
+                if f == "nexus_config.json": continue # Ignoramos el archivo de configuración
+                
                 def make_load(name): return lambda _: load_file_content(name)
                 def make_copy(name): return lambda _: export_manual(open(os.path.join(EXPORT_DIR, name), "r").read())
                 def make_del(name): return lambda _: (os.remove(os.path.join(EXPORT_DIR, name)), update_files())
@@ -164,19 +167,31 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # NUEVO MÓDULO: AGENTE IA (Groq / OpenRouter)
+        # MÓDULO: AGENTE IA (SISTEMA DE GUARDADO NATIVO REPARADO)
         # =========================================================
-        
-        saved_key = page.client_storage.get("ai_api_key") or ""
-        saved_prov = page.client_storage.get("ai_provider") or "Groq"
+        def load_config():
+            try:
+                if os.path.exists(CONFIG_FILE):
+                    with open(CONFIG_FILE, "r") as f: return json.load(f)
+            except: pass
+            return {"ai_api_key": "", "ai_provider": "Groq"}
+
+        config_data = load_config()
+        saved_key = config_data.get("ai_api_key", "")
+        saved_prov = config_data.get("ai_provider", "Groq")
 
         api_key_input = ft.TextField(label="API Key", value=saved_key, password=True, can_reveal_password=True, expand=True)
         provider_dd = ft.Dropdown(options=[ft.dropdown.Option("Groq"), ft.dropdown.Option("OpenRouter")], value=saved_prov, width=120)
         
         def save_config(e):
-            page.client_storage.set("ai_api_key", api_key_input.value)
-            page.client_storage.set("ai_provider", provider_dd.value)
-            status.value = "✓ Configuración IA Guardada."
+            try:
+                with open(CONFIG_FILE, "w") as f:
+                    json.dump({"ai_api_key": api_key_input.value, "ai_provider": provider_dd.value}, f)
+                status.value = "✓ Configuración IA Guardada localmente."
+                status.color = "green"
+            except Exception as ex:
+                status.value = f"❌ Error guardando config: {str(ex)}"
+                status.color = "red"
             status.update()
 
         btn_save_config = ft.ElevatedButton("💾 Guardar", on_click=save_config)
