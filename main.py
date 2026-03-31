@@ -1,7 +1,6 @@
 import flet as ft
 import os, base64, json, threading, http.server, socket, time, warnings, subprocess, tempfile, traceback
-import urllib.request
-from urllib.error import HTTPError
+import http.client
 import ssl
 
 warnings.simplefilter("ignore", DeprecationWarning)
@@ -59,15 +58,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.0.7 (ZERO-DEPENDENCY)
+# APLICACIÓN PRINCIPAL v5.0.8 (BARE METAL SOCKETS)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v5.0.7"
+        page.title = "NEXUS CAD v5.0.8"
         page.theme_mode = "dark"
         page.padding = 0
 
-        status = ft.Text("NEXUS v5.0.7 | Motor de Red Nativo Activo", color="green")
+        status = ft.Text("NEXUS v5.0.8 | Bare Metal Sockets Activos", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -151,7 +150,7 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # MÓDULO: AGENTE IA (URLLIB CON BYPASS DE PROXY PARA ANDROID)
+        # MÓDULO: AGENTE IA (BARE METAL HTTP.CLIENT)
         # =========================================================
         def load_config():
             try:
@@ -209,11 +208,13 @@ REGLAS ESTRICTAS:
 
             def fetch_ai():
                 try:
-                    key = api_key_input.value
+                    key = api_key_input.value.strip()
                     prov = provider_dd.value
                     model = model_input.value.strip()
                     
-                    url = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)" if prov == "Groq" else "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)"
+                    # Motor Bare Metal: Trabajamos con Hosts en lugar de URLs completas
+                    host = "api.groq.com" if prov == "Groq" else "openrouter.ai"
+                    path = "/openai/v1/chat/completions"
 
                     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
                     data = {
@@ -224,21 +225,25 @@ REGLAS ESTRICTAS:
                         ]
                     }
                     
-                    # MAGIA ANTI-CUELGUES PARA ANDROID
-                    # 1. Ignorar certificados SSL para que no se congele buscando rutas
+                    # Contexto SSL que ignora verificaciones rigurosas
                     ctx = ssl.create_default_context()
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
                     
-                    # 2. ProxyHandler vacío: El fix definitivo para el bucle infinito de Android
-                    proxy_handler = urllib.request.ProxyHandler({})
-                    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx), proxy_handler)
+                    # =========================================================
+                    # MAGIA ANTI-DEADLOCK: HTTP.CLIENT CRURO (CERO URLLIB)
+                    # =========================================================
+                    conn = http.client.HTTPSConnection(host, timeout=15, context=ctx)
+                    conn.request("POST", path, body=json.dumps(data).encode('utf-8'), headers=headers)
                     
-                    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
-                    
-                    # Abrir la conexión con el Opener blindado
-                    with opener.open(req, timeout=25) as response:
-                        res_data = json.loads(response.read().decode('utf-8'))
+                    response = conn.getresponse()
+                    status_code = response.status
+                    res_body = response.read().decode('utf-8')
+                    conn.close()
+                    # =========================================================
+
+                    if status_code == 200:
+                        res_data = json.loads(res_body)
                         ai_text = res_data['choices'][0]['message']['content']
                         
                         extracted_code = ""
@@ -261,15 +266,17 @@ REGLAS ESTRICTAS:
                             content=ft.Column(bot_controls),
                             bgcolor="#212121", padding=10, border_radius=8
                         ))
+                    else:
+                        chat_history.controls.append(ft.Container(
+                            ft.Text(f"❌ Error HTTP {status_code}:\n{res_body}", color="red", size=12), 
+                            bgcolor="#424242", padding=10
+                        ))
 
-                except HTTPError as e:
-                    error_body = e.read().decode('utf-8')
-                    chat_history.controls.append(ft.Container(ft.Text(f"❌ HTTP Error {e.code}:\n{error_body}", color="red", size=12), bgcolor="#424242", padding=10))
                 except Exception as ex:
                     error_trace = traceback.format_exc()
                     chat_history.controls.append(ft.Container(
                         content=ft.Column([
-                            ft.Text(f"❌ Excepción del Sistema:", color="red", weight="bold"),
+                            ft.Text(f"❌ Excepción Socket Bare Metal:", color="red", weight="bold"),
                             ft.Text(error_trace, color="red", size=10, selectable=True)
                         ]), 
                         bgcolor="#424242", padding=10
