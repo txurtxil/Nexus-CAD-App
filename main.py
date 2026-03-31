@@ -61,31 +61,34 @@ def start_server():
 threading.Thread(target=start_server, daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL (CÓDIGO ESPARTANO 100% SEGURO)
+# APLICACIÓN PRINCIPAL (COMPATIBLE FLET 0.23+)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v3.1"
+        page.title = "NEXUS CAD v3.2"
+        page.theme_mode = "dark"
+        page.padding = 0
         
-        status = ft.Text(value="Sistema Espartano Activo", color="green")
+        # FIX: Pasado de forma directa sin usar 'value='
+        status = ft.Text("Sistema Acorazado Activo", color="green")
 
-        # --- PORTAPAPELES (Nivel Dios / Triple Capa Silenciosa) ---
-        def copy_to_clipboard(text):
+        # --- PORTAPAPELES (Triple Capa Silenciosa) ---
+        def copy_to_clipboard(text_to_copy):
             success = False
             try:
-                page.clipboard.set_text(text)
+                page.clipboard.set_text(text_to_copy)
                 success = True
             except: pass
             
             if not success:
                 try:
-                    page.set_clipboard(text)
+                    page.set_clipboard(text_to_copy)
                     success = True
                 except: pass
                 
             if not success:
                 try:
-                    subprocess.run(['termux-clipboard-set'], input=text.encode('utf-8'))
+                    subprocess.run(['termux-clipboard-set'], input=text_to_copy.encode('utf-8'))
                     success = True
                 except: pass
             
@@ -100,18 +103,19 @@ def main(page: ft.Page):
         T_ENGRARE = "function main() {\n  var b = CSG.cylinder({start:[0,0,0], end:[0,0,5], radius:20});\n  return b;\n}"
         T_PEANA = "function main() {\n  var base = CSG.cube({center: [0, 0, 5], radius: [60, 40, 5]});\n  var soporte = CSG.cube({center: [0, 10, 25], radius: [60, 5, 25]});\n  return base.union(soporte);\n}"
 
-        # COMPONENTE PRIMITIVO 1: Caja de texto plana
         txt_code = ft.TextField(label="Codigo JS-CSG", multiline=True, expand=True, value=T_CARCASA)
 
         def load_template(t):
             txt_code.value = t
             page.update()
 
-        # COMPONENTE PRIMITIVO 2: Botones normales (Sustituyen al Dropdown que crasheaba)
-        btn_c = ft.ElevatedButton(text="📦 Carcasa", on_click=lambda _: load_template(T_CARCASA))
-        btn_e = ft.ElevatedButton(text="⚙️ Engranaje", on_click=lambda _: load_template(T_ENGRARE))
-        btn_p = ft.ElevatedButton(text="📱 Peana", on_click=lambda _: load_template(T_PEANA))
-        row_templates = ft.Row(controls=[btn_c, btn_e, btn_p], wrap=True)
+        # FIX: Eliminado 'text=' de los ElevatedButtons. Ahora se pasa directo ("📦 Carcasa").
+        btn_c = ft.ElevatedButton("📦 Carcasa", on_click=lambda _: load_template(T_CARCASA))
+        btn_e = ft.ElevatedButton("⚙️ Engranaje", on_click=lambda _: load_template(T_ENGRARE))
+        btn_p = ft.ElevatedButton("📱 Peana", on_click=lambda _: load_template(T_PEANA))
+        
+        # FIX: Eliminado 'controls='
+        row_templates = ft.Row([btn_c, btn_e, btn_p], wrap=True)
 
         # --- GESTOR DE ARCHIVOS ---
         file_list = ft.ListView(expand=True)
@@ -123,12 +127,12 @@ def main(page: ft.Page):
                 def make_copy(name): return lambda _: copy_file_content(name)
                 def make_del(name): return lambda _: delete_file(name)
 
-                # COMPONENTE PRIMITIVO 3: Botones de texto con Emojis en lugar de ft.icons
-                btn_load = ft.ElevatedButton(text="▶ Abrir", on_click=make_load(f))
-                btn_copy = ft.ElevatedButton(text="📋 Copiar", on_click=make_copy(f))
-                btn_del = ft.ElevatedButton(text="🗑️ Borrar", on_click=make_del(f))
+                # FIX: Botones directos
+                btn_load = ft.ElevatedButton("▶ Abrir", on_click=make_load(f))
+                btn_copy = ft.ElevatedButton("📋 Copiar", on_click=make_copy(f))
+                btn_del = ft.ElevatedButton("🗑️ Borrar", on_click=make_del(f))
 
-                row = ft.Row(controls=[ft.Text(value=f[:15], expand=True), btn_load, btn_copy, btn_del])
+                row = ft.Row([ft.Text(f[:15], expand=True), btn_load, btn_copy, btn_del])
                 file_list.controls.append(ft.Container(content=row, padding=5))
             page.update()
 
@@ -173,40 +177,43 @@ def main(page: ft.Page):
             update_files()
 
         # --- INTERFAZ GLOBAL ---
-        btn_compile = ft.ElevatedButton(text="▶ COMPILAR MALLA 3D", on_click=lambda _: run_render())
-        btn_save = ft.ElevatedButton(text="💾 GUARDAR", on_click=lambda _: save_project())
+        btn_compile = ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render())
+        btn_save = ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project())
 
-        editor_tab = ft.Column(controls=[
+        editor_tab = ft.Column([
             btn_compile,
-            ft.Row(controls=[btn_save, ft.Text(value="Plantillas:")]),
+            ft.Row([btn_save, ft.Text("Plantillas:")]),
             row_templates,
             txt_code
         ], expand=True)
 
-        prompts_tab = ft.Column(controls=[
-            ft.Text(value="Prompts para IA:"),
-            ft.TextField(label="Carcasa", value="Genera codigo Javascript CSG.js para carcasa 90x60x30mm con vaciado pared 2mm. Usa center:[x,y,z].", multiline=True),
+        prompts_tab = ft.Column([
+            ft.Text("Prompts para enviar a la IA:"),
+            ft.TextField(label="Carcasa Técnica", value="Genera codigo Javascript CSG.js para carcasa 90x60x30mm con vaciado interno de pared 2mm. Usa center:[x,y,z].", multiline=True),
         ], expand=True)
 
-        btn_visor = ft.ElevatedButton(text="ABRIR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/")
+        btn_visor = ft.ElevatedButton("ABRIR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/")
         visor_tab = ft.Container(content=btn_visor)
 
-        archivos_tab = ft.Column(controls=[ft.Text(value="Proyectos"), file_list], expand=True)
+        archivos_tab = ft.Column([ft.Text("Proyectos"), file_list], expand=True)
 
-        tabs = ft.Tabs(selected_index=0, tabs=[
-            ft.Tab(text="EDITOR", content=editor_tab),
-            ft.Tab(text="VISOR", content=visor_tab),
-            ft.Tab(text="ARCHIVOS", content=archivos_tab),
-            ft.Tab(text="IA", content=prompts_tab)
-        ], expand=True)
+        tabs = ft.Tabs(
+            selected_index=0, 
+            tabs=[
+                ft.Tab(text="EDITOR", content=editor_tab),
+                ft.Tab(text="VISOR", content=visor_tab),
+                ft.Tab(text="ARCHIVOS", content=archivos_tab),
+                ft.Tab(text="IA", content=prompts_tab)
+            ], 
+            expand=True
+        )
 
-        # COMPONENTE PRIMITIVO 4: Añadido limpio al motor
-        page.add(tabs, status)
+        page.add(ft.Container(content=ft.Column([tabs, status], expand=True), padding=10, expand=True))
         update_files()
 
     except Exception:
         page.clean()
-        page.add(ft.Text(value="CRASH:\n" + traceback.format_exc(), color="red"))
+        page.add(ft.Text("CRASH:\n" + traceback.format_exc(), color="red"))
         page.update()
 
 if __name__ == "__main__":
