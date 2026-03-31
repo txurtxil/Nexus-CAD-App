@@ -1,18 +1,8 @@
 import flet as ft
 import os, base64, json, threading, http.server, socket, time, warnings, subprocess, tempfile, traceback
-import urllib.request
-from urllib.error import HTTPError, URLError
-import ssl
+import requests # <- IMPLEMENTADO TU SISTEMA ROBUSTO
 
 warnings.simplefilter("ignore", DeprecationWarning)
-
-# FIX GLOBAL PARA ANDROID/TERMUX: Evita cuelgues por certificados SSL no encontrados
-try:
-    _create_unverified_https_context = ssl._create_unverified_context
-except AttributeError:
-    pass
-else:
-    ssl._create_default_https_context = _create_unverified_https_context
 
 # =========================================================
 # RUTAS BLINDADAS
@@ -67,15 +57,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.0.5 (LOGS & MODELS)
+# APLICACIÓN PRINCIPAL v5.0.6 (THE ARCHITECT UPDATE)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v5.0.5"
+        page.title = "NEXUS CAD v5.0.6"
         page.theme_mode = "dark"
         page.padding = 0
 
-        status = ft.Text("NEXUS v5.0.5 | Matriz IA y Logs Activos", color="green")
+        status = ft.Text("NEXUS v5.0.6 | Motor 'Requests' Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -159,52 +149,27 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # MÓDULO: AGENTE IA (MODELOS ACTUALIZADOS Y DEBUGGER)
+        # MÓDULO: AGENTE IA (USANDO LIBRERÍA REQUESTS + TEXTO LIBRE)
         # =========================================================
         def load_config():
             try:
                 if os.path.exists(CONFIG_FILE):
                     with open(CONFIG_FILE, "r") as f: return json.load(f)
             except: pass
-            return {"ai_api_key": "", "ai_provider": "Groq", "ai_model": "llama-3.3-70b-versatile"}
+            return {"ai_api_key": "", "ai_provider": "Groq", "ai_model": "llama3-70b-8192"}
 
         config_data = load_config()
         
         provider_dd = ft.Dropdown(options=[ft.dropdown.Option("Groq"), ft.dropdown.Option("OpenRouter")], value=config_data.get("ai_provider", "Groq"), width=120)
         api_key_input = ft.TextField(label="API Key", value=config_data.get("ai_api_key", ""), password=True, can_reveal_password=True, expand=True)
-        model_dd = ft.Dropdown(label="Modelo LLM", expand=True)
-
-        # FIX: Modelos de IA Actualizados a las últimas versiones
-        def update_models(e=None):
-            if provider_dd.value == "Groq":
-                model_dd.options = [
-                    ft.dropdown.Option("llama-3.3-70b-versatile"),
-                    ft.dropdown.Option("llama-3.1-8b-instant"),
-                    ft.dropdown.Option("mixtral-8x7b-32768"),
-                    ft.dropdown.Option("gemma2-9b-it")
-                ]
-                if model_dd.value not in [o.key for o in model_dd.options]:
-                    model_dd.value = "llama-3.3-70b-versatile"
-            else:
-                model_dd.options = [
-                    ft.dropdown.Option("google/gemini-2.5-flash"),
-                    ft.dropdown.Option("openai/gpt-4o-mini"),
-                    ft.dropdown.Option("anthropic/claude-3.5-haiku"),
-                    ft.dropdown.Option("meta-llama/llama-3.3-70b-instruct:free") 
-                ]
-                if model_dd.value not in [o.key for o in model_dd.options]:
-                    model_dd.value = "meta-llama/llama-3.3-70b-instruct:free"
-            page.update()
-
-        provider_dd.on_change = update_models
-        update_models() 
-        model_dd.value = config_data.get("ai_model", model_dd.value)
+        # TEXTO LIBRE: Pon el modelo que quieras, el sistema ya no te limita.
+        model_input = ft.TextField(label="Modelo (Ej: llama-3.3-70b-versatile)", value=config_data.get("ai_model", "llama-3.3-70b-versatile"), expand=True)
 
         def save_config(e):
             try:
                 with open(CONFIG_FILE, "w") as f:
-                    json.dump({"ai_api_key": api_key_input.value, "ai_provider": provider_dd.value, "ai_model": model_dd.value}, f)
-                status.value = "✓ Configuración de Red Guardada."
+                    json.dump({"ai_api_key": api_key_input.value, "ai_provider": provider_dd.value, "ai_model": model_input.value}, f)
+                status.value = "✓ Configuración Guardada."
                 status.color = "green"
             except Exception as ex:
                 status.value = f"❌ Error guardando config: {str(ex)}"
@@ -245,7 +210,7 @@ REGLAS ESTRICTAS:
                 try:
                     key = api_key_input.value
                     prov = provider_dd.value
-                    model = model_dd.value
+                    model = model_input.value.strip()
                     
                     url = "[https://api.groq.com/openai/v1/chat/completions](https://api.groq.com/openai/v1/chat/completions)" if prov == "Groq" else "[https://openrouter.ai/api/v1/chat/completions](https://openrouter.ai/api/v1/chat/completions)"
 
@@ -258,49 +223,51 @@ REGLAS ESTRICTAS:
                         ]
                     }
                     
-                    req = urllib.request.Request(url, data=json.dumps(data).encode('utf-8'), headers=headers, method='POST')
+                    # MAGIA BASADA EN TU SCRIPT MULTIMEDIA
+                    response = requests.post(url, headers=headers, json=data, timeout=25)
                     
-                    # Añadido timeout de 20s para que no se quede pensando eternamente
-                    with urllib.request.urlopen(req, timeout=20) as response:
-                        res_data = json.loads(response.read().decode('utf-8'))
+                    if response.status_code == 200:
+                        res_data = response.json()
                         ai_text = res_data['choices'][0]['message']['content']
-                    
-                    extracted_code = ""
-                    if "```javascript" in ai_text:
-                        extracted_code = ai_text.split("```javascript")[1].split("```")[0].strip()
-                    elif "```js" in ai_text:
-                        extracted_code = ai_text.split("```js")[1].split("```")[0].strip()
-                    elif "function main()" in ai_text:
-                        extracted_code = ai_text[ai_text.find("function main()"):].strip()
+                        
+                        extracted_code = ""
+                        if "```javascript" in ai_text:
+                            extracted_code = ai_text.split("```javascript")[1].split("```")[0].strip()
+                        elif "```js" in ai_text:
+                            extracted_code = ai_text.split("```js")[1].split("```")[0].strip()
+                        elif "function main()" in ai_text:
+                            extracted_code = ai_text[ai_text.find("function main()"):].strip()
 
-                    bot_controls = [ft.Text(ai_text, color="#e0e0e0", selectable=True)]
-                    if extracted_code:
-                        bot_controls.append(ft.ElevatedButton(
-                            "▶ INYECTAR AL EDITOR Y COMPILAR", 
-                            on_click=lambda _, c=extracted_code: (load_template(c), run_render()),
-                            bgcolor="green900", color="white"
+                        bot_controls = [ft.Text(ai_text, color="#e0e0e0", selectable=True)]
+                        if extracted_code:
+                            bot_controls.append(ft.ElevatedButton(
+                                "▶ INYECTAR AL EDITOR Y COMPILAR", 
+                                on_click=lambda _, c=extracted_code: (load_template(c), run_render()),
+                                bgcolor="green900", color="white"
+                            ))
+
+                        chat_history.controls.append(ft.Container(
+                            content=ft.Column(bot_controls),
+                            bgcolor="#212121", padding=10, border_radius=8
+                        ))
+                    else:
+                        # LOGS DE ERROR EXACTOS CON REQUESTS
+                        chat_history.controls.append(ft.Container(
+                            ft.Text(f"❌ Error HTTP {response.status_code}:\n{response.text}", color="red", size=12), 
+                            bgcolor="#424242", padding=10
                         ))
 
-                    chat_history.controls.append(ft.Container(
-                        content=ft.Column(bot_controls),
-                        bgcolor="#212121", padding=10, border_radius=8
-                    ))
-
-                except HTTPError as e:
-                    error_body = e.read().decode('utf-8')
-                    chat_history.controls.append(ft.Container(ft.Text(f"❌ HTTP Error {e.code}:\n{error_body}", color="red", size=12), bgcolor="#424242", padding=10))
                 except Exception as ex:
-                    # FIX: LOGS EXTREMOS. Imprime el traceback exacto en el chat para diagnóstico
                     error_trace = traceback.format_exc()
                     chat_history.controls.append(ft.Container(
                         content=ft.Column([
-                            ft.Text(f"❌ Error de Conexión/Sistema:", color="red", weight="bold"),
+                            ft.Text(f"❌ Excepción del Sistema:", color="red", weight="bold"),
                             ft.Text(error_trace, color="red", size=10, selectable=True)
                         ]), 
                         bgcolor="#424242", padding=10
                     ))
                 finally:
-                    # Garantiza que el reloj de carga se esconde
+                    # Este finally JAMÁS fallará ahora que usamos requests
                     loading_ring.visible = False
                     page.update()
 
@@ -311,7 +278,7 @@ REGLAS ESTRICTAS:
         view_ia = ft.Column([
             ft.Text("Configuración de Motor LLM", weight="bold", color="grey"),
             ft.Row([provider_dd, api_key_input]),
-            ft.Row([model_dd, btn_save_config]),
+            ft.Row([model_input, btn_save_config]),
             ft.Divider(),
             chat_history,
             ft.Row([user_prompt, loading_ring, btn_send], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
