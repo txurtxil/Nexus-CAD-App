@@ -5,23 +5,21 @@ from urllib.parse import urlparse
 warnings.simplefilter("ignore", DeprecationWarning)
 
 # =========================================================
-# CONFIGURACIÓN DE RUTAS UNIVERSAL (APK / TERMUX)
+# CONFIGURACIÓN DE RUTAS BLINDADAS (Anti-Pantalla Negra)
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
 
-# Determinar carpeta de proyectos segura
-EXPORT_DIR = os.path.join(BASE_DIR, "nexus_proyectos")
+# Carpeta segura universal
 try:
-    if not os.path.exists(EXPORT_DIR):
-        os.makedirs(EXPORT_DIR, exist_ok=True)
+    EXPORT_DIR = os.path.join(BASE_DIR, "nexus_proyectos")
+    os.makedirs(EXPORT_DIR, exist_ok=True)
 except:
-    # Fallback para APKs en carpetas restringidas
     EXPORT_DIR = os.path.join(tempfile.gettempdir(), "nexus_proyectos")
     os.makedirs(EXPORT_DIR, exist_ok=True)
 
 # =========================================================
-# MOTOR SERVIDOR LOCAL HTTP (Puerto Dinámico)
+# MOTOR SERVIDOR LOCAL HTTP
 # =========================================================
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -64,56 +62,79 @@ def start_server():
 threading.Thread(target=start_server, daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL NEXUS CAD
+# APLICACIÓN PRINCIPAL NEXUS CAD (ESTRUCTURA PRIMITIVA)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v2.8.5"
+        page.title = "NEXUS CAD v3.0 Final"
         page.theme_mode = "dark"
         page.bgcolor = "#0a0a0a"
         page.padding = 0
 
-        status = ft.Text("Sistema Online v2.8.5", size=10, color="grey600")
+        status = ft.Text("Sistema Acorazado v3.0", size=10, color="grey")
 
-        # --- SISTEMA DE PORTAPAPELES (Compatibilidad Máxima) ---
+        # --- SISTEMA DE PORTAPAPELES (Nivel Dios / Triple Capa) ---
         def copy_to_clipboard(text):
+            success = False
+            # Capa 1: Flet Moderno
             try:
-                if hasattr(page, 'set_clipboard'):
+                page.clipboard.set_text(text)
+                success = True
+            except: pass
+            
+            # Capa 2: Flet Clásico
+            if not success:
+                try:
                     page.set_clipboard(text)
-                else:
-                    # Fallback nativo Termux
+                    success = True
+                except: pass
+                
+            # Capa 3: Termux Nativo
+            if not success:
+                try:
                     subprocess.run(['termux-clipboard-set'], input=text.encode('utf-8'))
-                status.value = "✓ Copiado correctamente."
-            except:
-                status.value = "❌ Error al acceder al portapapeles."
+                    success = True
+                except: pass
+            
+            if success:
+                status.value = "✓ Código copiado."
+            else:
+                status.value = "❌ Error: API Portapapeles no soportada por el sistema."
             page.update()
 
-        # --- PLANTILLAS ---
+        # --- PLANTILLAS JS-CSG MATEMÁTICAMENTE SEGURAS ---
         T_CARCASA = "function main() {\n  var ext = CSG.cube({center:[0,0,10], radius:[40,25,10]});\n  var int = CSG.cube({center:[0,0,12], radius:[38,23,10]});\n  return ext.subtract(int);\n}"
-        T_ENGRARE = "function main() {\n  var b = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:20, slices:32});\n  return b;\n}"
-        T_PEANA = "function main() {\n  var b = CSG.cube({center:[0,0,5], radius:[30,40,5]});\n  return b;\n}"
+        T_ENGRARE = "function main() {\n  var b = CSG.cylinder({start:[0,0,0], end:[0,0,5], radius:20});\n  return b;\n}"
+        T_PEANA = "function main() {\n  var base = CSG.cube({center: [0, 0, 5], radius: [60, 40, 5]});\n  var soporte = CSG.cube({center: [0, 10, 25], radius: [60, 5, 25]});\n  return base.union(soporte);\n}"
+        T_BANDEJA = "function main() {\n  var solido = CSG.cube({center: [0,0,5], radius: [50, 50, 5]});\n  var hueco = CSG.cylinder({start: [0,0,2], end: [0,0,10], radius: 45, slices: 6});\n  return solido.subtract(hueco);\n}"
 
+        # FIX: Eliminado todo atributo estético que pueda causar Crash
         txt_code = ft.TextField(
             label="Código JS-CSG", 
             multiline=True, 
             expand=True, 
-            value=T_CARCASA, 
-            text_size=12, 
-            color="#00ff00"
+            value=T_CARCASA
         )
 
-        def load_template(t):
-            txt_code.value = t
+        def on_template_change(e):
+            val = e.control.value
+            if val == "Carcasa": txt_code.value = T_CARCASA
+            elif val == "Engranaje": txt_code.value = T_ENGRARE
+            elif val == "Peana": txt_code.value = T_PEANA
+            elif val == "Bandeja": txt_code.value = T_BANDEJA
             page.update()
 
-        # FIX: PopupMenuItem usando 'content' para evitar error de 'text'
-        btn_templates = ft.PopupMenuButton(
-            items=[
-                ft.PopupMenuItem(content=ft.Text("📦 Carcasa"), on_click=lambda _: load_template(T_CARCASA)),
-                ft.PopupMenuItem(content=ft.Text("⚙️ Engranaje"), on_click=lambda _: load_template(T_ENGRARE)),
-                ft.PopupMenuItem(content=ft.Text("📱 Peana"), on_click=lambda _: load_template(T_PEANA)),
+        # FIX: Sustituido PopupMenu por un Dropdown estándar a prueba de balas
+        dd_templates = ft.Dropdown(
+            options=[
+                ft.dropdown.Option("Carcasa"),
+                ft.dropdown.Option("Engranaje"),
+                ft.dropdown.Option("Peana"),
+                ft.dropdown.Option("Bandeja"),
             ],
-            content=ft.Row([ft.Icon(ft.icons.MENU_BOOK), ft.Text("Plantillas")])
+            on_change=on_template_change,
+            width=180,
+            label="Plantillas"
         )
 
         # --- GESTOR DE ARCHIVOS ---
@@ -126,31 +147,47 @@ def main(page: ft.Page):
                 def make_copy(name): return lambda _: copy_file_content(name)
                 def make_del(name): return lambda _: delete_file(name)
 
+                # FIX: Iconos básicos sin parámetros extraños
                 file_list.controls.append(
                     ft.Container(
                         content=ft.Row([
-                            ft.Text(f[:15], size=12, expand=True),
+                            ft.Text(f[:15], expand=True),
                             ft.IconButton(ft.icons.PLAY_ARROW, on_click=make_load(f)),
-                            ft.IconButton(ft.icons.COPY, on_click=make_copy(f), icon_color="blue"),
-                            ft.IconButton(ft.icons.DELETE, on_click=make_del(f), icon_color="red"),
-                        ]), bgcolor="#1a1a1a", padding=5, border_radius=8
+                            ft.IconButton(ft.icons.COPY, on_click=make_copy(f)),
+                            ft.IconButton(ft.icons.DELETE, on_click=make_del(f)),
+                        ]), 
+                        bgcolor="#1a1a1a", 
+                        padding=5, 
+                        border_radius=8
                     )
                 )
             page.update()
 
         def load_file_content(name):
-            with open(os.path.join(EXPORT_DIR, name), "r") as f: txt_code.value = f.read()
-            tabs.selected_index = 0
+            try:
+                with open(os.path.join(EXPORT_DIR, name), "r") as f: txt_code.value = f.read()
+                tabs.selected_index = 0
+                status.value = "✓ " + name + " cargado."
+            except Exception as e:
+                status.value = "❌ Error al leer."
             page.update()
 
         def copy_file_content(name):
-            with open(os.path.join(EXPORT_DIR, name), "r") as f: copy_to_clipboard(f.read())
+            try:
+                with open(os.path.join(EXPORT_DIR, name), "r") as f: copy_to_clipboard(f.read())
+            except Exception as e:
+                status.value = "❌ Error al copiar."
+                page.update()
 
         def delete_file(name):
-            os.remove(os.path.join(EXPORT_DIR, name))
+            try:
+                os.remove(os.path.join(EXPORT_DIR, name))
+                status.value = "✓ Eliminado."
+            except Exception as e:
+                status.value = "❌ Error al borrar."
             update_files()
 
-        # --- NAVEGACIÓN ---
+        # --- COMPILACIÓN Y GUARDADO ---
         def run_render():
             global LATEST_CODE_B64
             LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
@@ -159,38 +196,43 @@ def main(page: ft.Page):
 
         def save_project():
             fname = "nexus_" + str(int(time.time())) + ".jscad"
-            with open(os.path.join(EXPORT_DIR, fname), "w") as f: f.write(txt_code.value)
-            status.value = "✓ Guardado: " + fname
+            try:
+                with open(os.path.join(EXPORT_DIR, fname), "w") as f: f.write(txt_code.value)
+                status.value = "✓ Guardado: " + fname
+            except Exception as e:
+                status.value = "❌ Error de escritura."
             update_files()
 
+        # --- INTERFAZ GLOBAL ---
         editor_tab = ft.Column([
-            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, width=float('inf'), bgcolor="green900", color="white"),
-            ft.Row([btn_templates, ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project(), bgcolor="blue900")]),
+            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, width=float('inf')),
+            ft.Row([dd_templates, ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project())]),
             txt_code
         ], expand=True)
 
         prompts_tab = ft.Column([
-            ft.Text("Prompts para IA:", weight="bold"),
-            ft.TextField(label="Prompt CAD", value="Genera código CSG.js para una pieza técnica...", read_only=True),
+            ft.Text("Prompts para enviar a tu IA:", weight="bold"),
+            ft.TextField(label="Carcasa Técnica", value="Actúa como ingeniero CAD. Genera código Javascript para la librería CSG.js. Crea una carcasa de 90x60x30mm con vaciado interno de pared de 2mm. Usa center:[x,y,z] en los cubos. Devuelve la pieza final en la function main().", multiline=True),
+            ft.TextField(label="Bandeja Organizadora", value="Genera el código JS (CSG.js) de una bandeja organizadora con patrón hexagonal. Usa cilindros con 'slices: 6' para crear los compartimentos hexagonales y réstalos de un cubo sólido principal.", multiline=True),
         ], expand=True, scroll="auto")
 
         tabs = ft.Tabs(selected_index=0, tabs=[
             ft.Tab(text="EDITOR", content=editor_tab),
-            ft.Tab(text="VISOR", content=ft.Container(content=ft.ElevatedButton("LANZAR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/"), alignment=ft.alignment.center)),
+            ft.Tab(text="VISOR", content=ft.Container(content=ft.ElevatedButton("ABRIR VISOR", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/"), alignment=ft.alignment.center)),
             ft.Tab(text="ARCHIVOS", content=ft.Column([ft.Text("Mis Proyectos"), file_list], expand=True)),
             ft.Tab(text="IA", content=prompts_tab)
         ], expand=True, on_change=lambda _: update_files())
 
-        page.add(ft.SafeArea(content=ft.Column([tabs, status], expand=True)))
+        # FIX: Eliminado SafeArea para compatibilidad universal con versiones antiguas de Android/Flet
+        page.add(ft.Container(content=ft.Column([tabs, status], expand=True), padding=10, expand=True))
         update_files()
 
     except Exception:
         page.clean()
-        page.add(ft.SafeArea(ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red", selectable=True)))
+        page.add(ft.Container(content=ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red"), padding=10))
         page.update()
 
 if __name__ == "__main__":
-    # Detección de entorno para evitar bloqueos de red
     if "TERMUX_VERSION" in os.environ:
         ft.app(target=main, port=0, view=ft.AppView.WEB_BROWSER)
     else:
