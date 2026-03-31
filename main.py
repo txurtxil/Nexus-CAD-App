@@ -106,15 +106,14 @@ def main(page: ft.Page):
             txt_code.value = t
             page.update()
 
-        # FIX: PopupMenuItem usando 'content' para evitar error de 'text'. 
-        # FIX: Cambio de ft.icons.MENU_BOOK a ft.icons.BOOK (Evita el AttributeError)
+        # FIX: PopupMenuItem usando 'content' para evitar error de 'text'
         btn_templates = ft.PopupMenuButton(
             items=[
                 ft.PopupMenuItem(content=ft.Text("📦 Carcasa"), on_click=lambda _: load_template(T_CARCASA)),
                 ft.PopupMenuItem(content=ft.Text("⚙️ Engranaje"), on_click=lambda _: load_template(T_ENGRARE)),
                 ft.PopupMenuItem(content=ft.Text("📱 Peana"), on_click=lambda _: load_template(T_PEANA)),
             ],
-            content=ft.Row([ft.Icon(ft.icons.BOOK), ft.Text("Plantillas")])
+            content=ft.Row([ft.Icon(ft.icons.MENU_BOOK), ft.Text("Plantillas")])
         )
 
         # --- GESTOR DE ARCHIVOS ---
@@ -164,12 +163,8 @@ def main(page: ft.Page):
             status.value = "✓ Guardado: " + fname
             update_files()
 
-        # FIX: Se eliminó width=float('inf') del botón porque causa errores de layout en el motor de Flutter.
-        # En su lugar, se puede usar expand en filas/columnas, o simplemente dejar que tome su ancho.
         editor_tab = ft.Column([
-            ft.Row([
-                ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, bgcolor="green900", color="white", expand=True)
-            ]),
+            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), height=50, width=float('inf'), bgcolor="green900", color="white"),
             ft.Row([btn_templates, ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project(), bgcolor="blue900")]),
             txt_code
         ], expand=True)
