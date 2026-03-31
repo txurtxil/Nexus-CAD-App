@@ -58,15 +58,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.0.8 (BARE METAL SOCKETS)
+# APLICACIÓN PRINCIPAL v5.0.10
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v5.0.8"
+        page.title = "NEXUS CAD v5.0.10"
         page.theme_mode = "dark"
         page.padding = 0
 
-        status = ft.Text("NEXUS v5.0.8 | Bare Metal Sockets Activos", color="green")
+        status = ft.Text("NEXUS v5.0.10 | Diagnóstico de Red Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -91,6 +91,24 @@ def main(page: ft.Page):
             )
             open_dialog(dlg_copy)
 
+        def copy_text(text_to_copy):
+            try:
+                page.set_clipboard(str(text_to_copy))
+                status.value = "✓ Texto copiado."
+                status.color = "green"
+                page.update()
+            except:
+                try:
+                    subprocess.run(['termux-clipboard-set'], input=str(text_to_copy).encode('utf-8'))
+                    status.value = "✓ Copiado (Termux)."
+                    status.color = "green"
+                    page.update()
+                except:
+                    export_manual(str(text_to_copy), "Copiar Manualmente")
+                    status.value = "⚠️ Usa copia manual."
+                    status.color = "amber"
+                    page.update()
+
         # --- EDITOR CAD ---
         DEFAULT_CODE = "function main() {\n  return CSG.cube({center:[0,0,0], radius:[10,10,10]});\n}"
         txt_code = ft.TextField(label="Código JS-CSG", multiline=True, expand=True, value=DEFAULT_CODE)
@@ -99,7 +117,7 @@ def main(page: ft.Page):
             txt_code.value = t
             txt_code.update()
             set_tab(0)
-            status.value = "✓ Código cargado."
+            status.value = "✓ Código cargado en el editor."
             status.color = "green"
             status.update()
 
@@ -130,7 +148,6 @@ def main(page: ft.Page):
             file_list.controls.clear()
             for f in reversed(sorted(os.listdir(EXPORT_DIR))):
                 if f == "nexus_config.json": continue 
-                
                 def make_load(name): return lambda _: load_file_content(name)
                 def make_copy(name): return lambda _: export_manual(open(os.path.join(EXPORT_DIR, name), "r").read())
                 def make_del(name): return lambda _: (os.remove(os.path.join(EXPORT_DIR, name)), update_files())
@@ -150,7 +167,7 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # MÓDULO: AGENTE IA (BARE METAL HTTP.CLIENT)
+        # MÓDULO: AGENTE IA (CON DEPURADOR EN PANTALLA)
         # =========================================================
         def load_config():
             try:
@@ -163,7 +180,7 @@ def main(page: ft.Page):
         
         provider_dd = ft.Dropdown(options=[ft.dropdown.Option("Groq"), ft.dropdown.Option("OpenRouter")], value=config_data.get("ai_provider", "Groq"), width=120)
         api_key_input = ft.TextField(label="API Key", value=config_data.get("ai_api_key", ""), password=True, can_reveal_password=True, expand=True)
-        model_input = ft.TextField(label="Modelo (Ej: llama-3.3-70b-versatile)", value=config_data.get("ai_model", "llama-3.3-70b-versatile"), expand=True)
+        model_input = ft.TextField(label="Modelo LLM", value=config_data.get("ai_model", "llama-3.3-70b-versatile"), expand=True)
 
         def save_config(e):
             try:
@@ -172,15 +189,18 @@ def main(page: ft.Page):
                 status.value = "✓ Configuración Guardada."
                 status.color = "green"
             except Exception as ex:
-                status.value = f"❌ Error guardando config: {str(ex)}"
+                status.value = f"❌ Error: {str(ex)}"
                 status.color = "red"
             status.update()
 
         btn_save_config = ft.ElevatedButton("💾 Guardar", on_click=save_config)
         
         chat_history = ft.ListView(expand=True, spacing=10)
-        user_prompt = ft.TextField(label="Escribe tu idea CAD...", multiline=True, expand=True)
+        user_prompt = ft.TextField(label="Ej: Crea una caja para Arduino...", multiline=True, expand=True)
         loading_ring = ft.ProgressRing(visible=False, width=20, height=20)
+        
+        # LA CONSOLA DE DIAGNÓSTICO (Para cazar el cuelgue)
+        debug_console = ft.TextField(label="Terminal de Red (Debugger)", value="", multiline=True, read_only=True, height=120, text_size=10, color="#00ff00", bgcolor="#000000")
 
         SYS_PROMPT = """Eres un ingeniero experto en CAD paramétrico. Genera código en Javascript PURO para la librería CSG.js. 
 REGLAS ESTRICTAS:
@@ -189,16 +209,18 @@ REGLAS ESTRICTAS:
 3. Usa pieza1.union(pieza2) y pieza1.subtract(pieza2).
 4. Devuelve SOLO el código dentro de una 'function main() { ... return pieza_final; }' dentro de un bloque ```javascript """
 
+        def log_debug(msg):
+            debug_console.value += f"[{time.strftime('%H:%M:%S')}] {msg}\n"
+            page.update()
+
         def send_to_ai(e):
-            if not api_key_input.value:
-                status.value = "❌ Falta la API Key."
-                status.color = "red"; status.update()
-                return
+            if not api_key_input.value: return
             if not user_prompt.value: return
 
             prompt_text = user_prompt.value
             user_prompt.value = ""
             loading_ring.visible = True
+            debug_console.value = "" 
             
             chat_history.controls.append(ft.Container(
                 content=ft.Text(prompt_text, color="white"),
@@ -208,39 +230,36 @@ REGLAS ESTRICTAS:
 
             def fetch_ai():
                 try:
+                    log_debug("1. Iniciando Hilo de Conexión...")
                     key = api_key_input.value.strip()
                     prov = provider_dd.value
                     model = model_input.value.strip()
                     
-                    # Motor Bare Metal: Trabajamos con Hosts en lugar de URLs completas
                     host = "api.groq.com" if prov == "Groq" else "openrouter.ai"
                     path = "/openai/v1/chat/completions"
 
                     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-                    data = {
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": SYS_PROMPT},
-                            {"role": "user", "content": prompt_text}
-                        ]
-                    }
+                    data = {"model": model, "messages": [{"role": "system", "content": SYS_PROMPT}, {"role": "user", "content": prompt_text}]}
                     
-                    # Contexto SSL que ignora verificaciones rigurosas
+                    log_debug("2. Evadiendo validación SSL de Android...")
                     ctx = ssl.create_default_context()
                     ctx.check_hostname = False
                     ctx.verify_mode = ssl.CERT_NONE
                     
-                    # =========================================================
-                    # MAGIA ANTI-DEADLOCK: HTTP.CLIENT CRURO (CERO URLLIB)
-                    # =========================================================
+                    log_debug(f"3. Conectando por Socket a {host}:443...")
                     conn = http.client.HTTPSConnection(host, timeout=15, context=ctx)
+                    
+                    log_debug("4. Conexión establecida. Enviando POST request...")
                     conn.request("POST", path, body=json.dumps(data).encode('utf-8'), headers=headers)
                     
+                    log_debug("5. Datos enviados. Esperando respuesta del servidor (Max 15s)...")
                     response = conn.getresponse()
                     status_code = response.status
+                    
+                    log_debug(f"6. Respuesta HTTP {status_code} recibida. Leyendo cuerpo...")
                     res_body = response.read().decode('utf-8')
                     conn.close()
-                    # =========================================================
+                    log_debug("7. Conexión cerrada con éxito.")
 
                     if status_code == 200:
                         res_data = json.loads(res_body)
@@ -256,32 +275,20 @@ REGLAS ESTRICTAS:
 
                         bot_controls = [ft.Text(ai_text, color="#e0e0e0", selectable=True)]
                         if extracted_code:
-                            bot_controls.append(ft.ElevatedButton(
-                                "▶ INYECTAR AL EDITOR Y COMPILAR", 
-                                on_click=lambda _, c=extracted_code: (load_template(c), run_render()),
-                                bgcolor="green900", color="white"
-                            ))
-
-                        chat_history.controls.append(ft.Container(
-                            content=ft.Column(bot_controls),
-                            bgcolor="#212121", padding=10, border_radius=8
-                        ))
+                            bot_controls.append(ft.ElevatedButton("▶ INYECTAR AL EDITOR Y COMPILAR", on_click=lambda _, c=extracted_code: (load_template(c), run_render()), bgcolor="green900", color="white"))
+                        
+                        chat_history.controls.append(ft.Container(content=ft.Column(bot_controls), bgcolor="#212121", padding=10, border_radius=8))
                     else:
-                        chat_history.controls.append(ft.Container(
-                            ft.Text(f"❌ Error HTTP {status_code}:\n{res_body}", color="red", size=12), 
-                            bgcolor="#424242", padding=10
-                        ))
+                        log_debug(f"Error de servidor: {res_body}")
+                        chat_history.controls.append(ft.Container(ft.Text(f"❌ Error HTTP {status_code}:\n{res_body}", color="red", size=12), bgcolor="#424242", padding=10))
 
                 except Exception as ex:
-                    error_trace = traceback.format_exc()
+                    log_debug(f"CRASH: Fallo en la red - {str(ex)}")
                     chat_history.controls.append(ft.Container(
-                        content=ft.Column([
-                            ft.Text(f"❌ Excepción Socket Bare Metal:", color="red", weight="bold"),
-                            ft.Text(error_trace, color="red", size=10, selectable=True)
-                        ]), 
-                        bgcolor="#424242", padding=10
+                        content=ft.Column([ft.Text("❌ Error de Conexión / Timeout:", color="red", weight="bold"), ft.Text(str(ex), color="red", size=10)]), bgcolor="#424242", padding=10
                     ))
                 finally:
+                    log_debug("8. Finalizando proceso. Deteniendo reloj.")
                     loading_ring.visible = False
                     page.update()
 
@@ -290,13 +297,115 @@ REGLAS ESTRICTAS:
         btn_send = ft.ElevatedButton("🚀 ENVIAR", on_click=send_to_ai, color="black", bgcolor="cyan")
 
         view_ia = ft.Column([
-            ft.Text("Configuración de Motor LLM", weight="bold", color="grey"),
             ft.Row([provider_dd, api_key_input]),
             ft.Row([model_input, btn_save_config]),
+            debug_console,
             ft.Divider(),
             chat_history,
             ft.Row([user_prompt, loading_ring, btn_send], alignment=ft.MainAxisAlignment.SPACE_BETWEEN)
         ], expand=True)
+
+        # =========================================================
+        # NUEVA PESTAÑA: LIBRERÍA DE INGENIERÍA Y PROMPTS
+        # =========================================================
+        def create_folder(icon, title, prompts):
+            controls = []
+            for name, text in prompts:
+                controls.append(ft.Text(name, color="amber", weight="bold"))
+                full_prompt = text + AI_RULE
+                controls.append(ft.TextField(value=full_prompt, multiline=True, read_only=True, text_size=12))
+                controls.append(ft.ElevatedButton("📋 Copiar Prompt", on_click=lambda e, txt=full_prompt: copy_text(txt)))
+                controls.append(ft.Container(height=15))
+            content_col = ft.Column(controls, visible=False)
+            def toggle(e):
+                content_col.visible = not content_col.visible; page.update()
+            return ft.Column([ft.ElevatedButton(icon + " " + title, on_click=toggle, width=float('inf'), color="white", bgcolor="#424242"), content_col])
+
+        def create_gallery(icon, title, examples):
+            controls = []
+            for name, code in examples:
+                controls.append(ft.Text(name, color="green", weight="bold"))
+                controls.append(ft.Text("Código CAD puro. Carga inmediata al editor.", color="grey", size=10))
+                controls.append(ft.ElevatedButton("▶ Inyectar y Renderizar", on_click=lambda e, c=code: (load_template(c), run_render()), bgcolor="#1b5e20", color="white"))
+                controls.append(ft.Container(height=15))
+            content_col = ft.Column(controls, visible=False)
+            def toggle(e):
+                content_col.visible = not content_col.visible; page.update()
+            return ft.Column([ft.ElevatedButton(icon + " " + title, on_click=toggle, width=float('inf'), color="black", bgcolor="amber"), content_col])
+
+        AI_RULE = " REGLA CRÍTICA: Escribe en Javascript puro para CSG.js. Usa primitivas absolutas como CSG.cube({center:[x,y,z], radius:[x,y,z]}). Devuelve el código en function main() { return pieza; }."
+
+        ia_electronica = [
+            ("Caja Raspberry Pi", "Actúa como ingeniero CAD. Haz una caja de 90x60x30mm con vaciado interior (pared 2mm). Añade agujeros laterales para USB restando cubos."),
+            ("Pasacables de Escritorio", "Genera un cilindro hueco paramétrico (radio ext 30mm, int 25mm, alto 20mm) con una ranura lateral para cables."),
+            ("Soporte Batería 18650", "Crea un bloque sólido y réstale 2 cilindros horizontales de 18.5mm de diámetro y 65.5mm de largo para alojar dos baterías de litio.")
+        ]
+        
+        ia_mecanismos = [
+            ("Rejilla Paramétrica", "Crea un cubo de 100x100x5mm. Usa dos bucles 'for' anidados para restar cilindros cada 10mm."),
+            ("Engranaje Cilíndrico", "Crea un cilindro base de radio 30 y alto 10. Usa un bucle 'for' con Math.cos y Math.sin para instanciar 16 cubos en los bordes como dientes.")
+        ]
+        
+        ia_hogar = [
+            ("Posavasos de Panal", "Diseña un posavasos redondo (radio 45, grosor 5). Usa un bucle para generar hexágonos (slices:6) y réstalos a la base."),
+            ("Soporte Móvil", "Crea una peana para smartphone. Usa un cubo principal y réstale una ranura central inclinada a 60 grados para apoyar el teléfono.")
+        ]
+
+        CODE_ESTACION = """function main() {
+  var base = CSG.cube({center: [0,0,12.5], radius: [80,60,12.5]});
+  var agujeros = [];
+  for(var x = -70; x <= -10; x += 22) {
+    for(var y = -50; y <= 10; y += 22) {
+      agujeros.push(CSG.cube({center: [x,y,14.5], radius: [9,9,12.5]}));
+    }
+  }
+  agujeros.push(CSG.cylinder({start: [-85,40,16], end: [85,40,16], radius: 8, slices: 64}));
+  agujeros.push(CSG.cube({center: [50,40,18], radius: [25,6,12]}));
+  for(var i = 0; i < 3; i++) {
+    agujeros.push(CSG.cylinder({start: [60,-40+(i*25),5], end: [60,-40+(i*25),30], radius: 9.5, slices: 64}));
+  }
+  var h_unidos = agujeros[0];
+  for(var k = 1; k < agujeros.length; k++) h_unidos = h_unidos.union(agujeros[k]);
+  return base.subtract(h_unidos).union(CSG.cylinder({start: [35,-35,25], end: [35,-35,60], radius: 4, slices: 32}));
+}"""
+
+        CODE_ENGRANAJE = """function main() {
+  var dientes = 16; var radio = 25; var grosor = 5;
+  var base = CSG.cylinder({start:[0,0,0], end:[0,0,grosor], radius:radio, slices:64});
+  var todos_dientes = null;
+  for(var i=0; i<dientes; i++) {
+    var angulo = (i * Math.PI * 2) / dientes;
+    var x = Math.cos(angulo) * radio;
+    var y = Math.sin(angulo) * radio;
+    var d = CSG.cube({center:[x,y,grosor/2], radius:[3,5,grosor/2]});
+    if(todos_dientes===null) todos_dientes = d; else todos_dientes = todos_dientes.union(d);
+  }
+  var eje = CSG.cylinder({start:[0,0,-1], end:[0,0,grosor+1], radius:5, slices:32});
+  return base.union(todos_dientes).subtract(eje);
+}"""
+
+        CODE_CAJA = """function main() {
+  var caja_ext = CSG.cube({center:[0,0,15], radius:[45,30,15]});
+  var caja_int = CSG.cube({center:[0,0,17], radius:[43,28,15]});
+  var agujero_usb = CSG.cube({center:[45,10,10], radius:[5,8,4]});
+  var agujero_red = CSG.cube({center:[45,-10,10], radius:[5,10,6]});
+  return caja_ext.subtract(caja_int).subtract(agujero_usb).subtract(agujero_red);
+}"""
+
+        galeria_ejemplos = [
+            ("Estación Microsoldadura SMD", CODE_ESTACION),
+            ("Engranaje Recto Paramétrico", CODE_ENGRANAJE),
+            ("Caja Raspberry Pi Base", CODE_CAJA)
+        ]
+
+        view_libreria = ft.Column([
+            ft.Text("Ingeniería Asistida (Galería y Prompts):", weight="bold", color="cyan"),
+            create_gallery("💎", "CÓDIGOS MAESTROS (Inyección Directa)", galeria_ejemplos),
+            ft.Container(height=10),
+            create_folder("⚡", "Electrónica y Taller", ia_electronica),
+            create_folder("⚙️", "Mecanismos y Geometría", ia_mecanismos),
+            create_folder("🏠", "Hogar y Decoración", ia_hogar),
+        ], expand=True, scroll="auto")
 
         # =========================================================
         # VISTAS INDEPENDIENTES Y NAVEGACIÓN
@@ -321,13 +430,15 @@ REGLAS ESTRICTAS:
             elif idx == 1: main_container.content = view_visor
             elif idx == 2: main_container.content = view_archivos
             elif idx == 3: main_container.content = view_ia
+            elif idx == 4: main_container.content = view_libreria
             page.update()
 
         nav_bar = ft.Row([
             ft.ElevatedButton("💻 EDITOR", on_click=lambda _: set_tab(0)),
             ft.ElevatedButton("👁️ VISOR", on_click=lambda _: set_tab(1)),
-            ft.ElevatedButton("📁 ARCHIVOS", on_click=lambda _: (update_files(), set_tab(2))),
-            ft.ElevatedButton("🤖 ASISTENTE IA", on_click=lambda _: set_tab(3), color="black", bgcolor="cyan"),
+            ft.ElevatedButton("📁 ARCHIVO", on_click=lambda _: (update_files(), set_tab(2))),
+            ft.ElevatedButton("🤖 IA", on_click=lambda _: set_tab(3), color="black", bgcolor="cyan"),
+            ft.ElevatedButton("📚 LIBRERÍA", on_click=lambda _: set_tab(4), color="black", bgcolor="amber"),
         ], scroll="auto")
 
         root_container = ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True)
