@@ -56,15 +56,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v8.2 (MECHANICAL FASTENERS)
+# APLICACIÓN PRINCIPAL v8.3 (MECHANICAL PRECISION)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v8.2"
+        page.title = "NEXUS CAD v8.3"
         page.theme_mode = "dark"
         page.padding = 0 
         
-        status = ft.Text("NEXUS v8.2 | Fasteners y Vectores Activos", color="green")
+        status = ft.Text("NEXUS v8.3 | Motor de Ensamblajes Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -223,29 +223,7 @@ def main(page: ft.Page):
                 txt_code.value = code
 
             # ==========================================
-            # FIX 1: HÉLICE RESUELTA POR VECTORES 3D
-            # ==========================================
-            elif h == "helice":
-                rad, n_aspas, pitch = sl_hel_r.value, int(sl_hel_n.value), sl_hel_p.value
-                code = f"function main() {{\n  var rad = {rad}; var n = {n_aspas}; var pitch = {pitch};\n"
-                code += f"  var hub = CSG.cylinder({{start:[0,0,0], end:[0,0,10], radius:8, slices:32}});\n"
-                code += f"  var agujero = CSG.cylinder({{start:[0,0,-1], end:[0,0,11], radius:2.5, slices:16}});\n"
-                code += f"  var aspas = new CSG();\n"
-                code += f"  for(var i=0; i<n; i++) {{\n    var a = (i * Math.PI * 2) / n;\n"
-                code += f"    var dx = Math.cos(a); var dy = Math.sin(a);\n"
-                code += f"    // Fix: Creamos el aspa usando un cilindro de 4 caras (rombo) estirado\n"
-                code += f"    // Sus puntos de inicio y fin le dan el ángulo y la rotación vectorialmente\n"
-                code += f"    var aspa = CSG.cylinder({{\n"
-                code += f"        start: [6*dx, 6*dy, 5 - (pitch/10)],\n"
-                code += f"        end: [rad*dx, rad*dy, 5 + (pitch/10)],\n"
-                code += f"        radius: 3, slices: 4\n"
-                code += f"    }});\n"
-                code += f"    aspas = aspas.union(aspa);\n  }}\n"
-                code += f"  var pieza = hub.union(aspas).subtract(agujero);\n  return pieza;\n}}"
-                txt_code.value = code
-
-            # ==========================================
-            # FIX 2: TORNILLO Y TUERCA UNIFICADOS
+            # FIX TORNILLO: ERROR "NameError" SOLUCIONADO
             # ==========================================
             elif h == "fijacion":
                 m, l_tornillo, tol = sl_fij_m.value, sl_fij_l.value, sl_fij_tol.value
@@ -260,18 +238,64 @@ def main(page: ft.Page):
                     code += f"  var agujero = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:{r_eje + tol}, slices:32}});\n"
                     code += f"  return cuerpo.subtract(agujero);\n}}"
                 else:
-                    # ES UN TORNILLO CON ROSCA SIMULADA
-                    code = f"function main() {{\n  var m = {m}; var l = {l_tornillo}; var r_eje = {r_eje - tol};\n"
-                    code += f"  var cabeza = CSG.cylinder({{start:[0,0,0], end:[0,0,{h_cabeza}], radius:{r_hex}, slices:6}});\n"
-                    code += f"  // Eje ligeramente más estrecho para dejar espacio a la rosca\n"
-                    code += f"  var eje = CSG.cylinder({{start:[0,0,{h_cabeza - 0.1}], end:[0,0,{h_cabeza + l}], radius:r_eje - (m*0.08), slices:32}});\n"
-                    code += f"  var roscas = new CSG();\n"
-                    code += f"  var paso = m * 0.15; // Pitch de rosca proporcional a la métrica\n"
-                    code += f"  // Bucle generador de anillos (Rosca simulada extrarrápida)\n"
-                    code += f"  for(var z = {h_cabeza + 1}; z < {h_cabeza + l - 1}; z += paso*1.5) {{\n"
-                    code += f"      var anillo = CSG.cylinder({{start:[0,0,z], end:[0,0,z+(paso)], radius:r_eje, slices:16}});\n"
-                    code += f"      roscas = roscas.union(anillo);\n  }}\n"
-                    code += f"  return cabeza.union(eje).union(roscas);\n}}"
+                    # ES UN TORNILLO CON ROSCA (Sin NameErrors en Python)
+                    code = f"function main() {{\n"
+                    code += f"  var m = {m}; var l_tornillo = {l_tornillo}; var r_eje = {r_eje - tol};\n"
+                    code += f"  var h_cabeza = {h_cabeza}; var r_hex = {r_hex};\n"
+                    code += f"  var cabeza = CSG.cylinder({{start:[0,0,0], end:[0,0,h_cabeza], radius:r_hex, slices:6}});\n"
+                    code += f"  var eje = CSG.cylinder({{start:[0,0,h_cabeza - 0.1], end:[0,0,h_cabeza + l_tornillo], radius:r_eje - (m*0.08), slices:32}});\n"
+                    code += f"  var pieza = cabeza.union(eje);\n"
+                    code += f"  var paso = m * 0.15;\n"
+                    code += f"  // Acoplando anillos iterativos al eje para simular rosca realista\n"
+                    code += f"  for(var z = h_cabeza + 1; z < h_cabeza + l_tornillo - 1; z += paso*1.5) {{\n"
+                    code += f"      var anillo = CSG.cylinder({{start:[0,0,z], end:[0,0,z+paso], radius:r_eje, slices:16}});\n"
+                    code += f"      pieza = pieza.union(anillo);\n"
+                    code += f"  }}\n"
+                    code += f"  return pieza;\n}}"
+                txt_code.value = code
+
+            # ==========================================
+            # NUEVO: ENSAMBLAJE DE RODAMIENTO (ASSEMBLY)
+            # ==========================================
+            elif h == "rodamiento":
+                d_int, d_ext, ht = sl_rod_dint.value, sl_rod_dext.value, sl_rod_h.value
+                code = f"function main() {{\n  var d_int = {d_int}; var d_ext = {d_ext}; var h = {ht};\n"
+                code += f"  // Pista Exterior\n"
+                code += f"  var pista_ext = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:d_ext/2, slices:64}})\n"
+                code += f"       .subtract( CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:(d_ext/2)-2, slices:64}}) );\n"
+                code += f"  // Pista Interior\n"
+                code += f"  var pista_int = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:(d_int/2)+2, slices:64}})\n"
+                code += f"       .subtract( CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:d_int/2, slices:64}}) );\n"
+                code += f"  var pieza = pista_ext.union(pista_int);\n\n"
+                code += f"  // Cálculo dinámico de esferas (Bearing Balls)\n"
+                code += f"  var r_espacio = (((d_ext/2)-2) - ((d_int/2)+2)) / 2;\n"
+                code += f"  var radio_centro = ((d_int/2)+2 + (d_ext/2)-2)/2;\n"
+                code += f"  var n_bolas = Math.floor((Math.PI * 2 * radio_centro) / (r_espacio * 2.2));\n"
+                code += f"  for(var i=0; i<n_bolas; i++) {{\n"
+                code += f"      var a = (i * Math.PI * 2) / n_bolas;\n"
+                code += f"      var bx = Math.cos(a) * radio_centro;\n"
+                code += f"      var by = Math.sin(a) * radio_centro;\n"
+                code += f"      var bola = CSG.sphere({{center:[bx, by, h/2], radius:r_espacio*0.95, resolution:16}});\n"
+                code += f"      pieza = pieza.union(bola);\n"
+                code += f"  }}\n"
+                code += f"  return pieza;\n}}"
+                txt_code.value = code
+
+            elif h == "helice":
+                rad, n_aspas, pitch = sl_hel_r.value, int(sl_hel_n.value), sl_hel_p.value
+                code = f"function main() {{\n  var rad = {rad}; var n = {n_aspas}; var pitch = {pitch};\n"
+                code += f"  var hub = CSG.cylinder({{start:[0,0,0], end:[0,0,10], radius:8, slices:32}});\n"
+                code += f"  var agujero = CSG.cylinder({{start:[0,0,-1], end:[0,0,11], radius:2.5, slices:16}});\n"
+                code += f"  var aspas = new CSG();\n"
+                code += f"  for(var i=0; i<n; i++) {{\n    var a = (i * Math.PI * 2) / n;\n"
+                code += f"    var dx = Math.cos(a); var dy = Math.sin(a);\n"
+                code += f"    var aspa = CSG.cylinder({{\n"
+                code += f"        start: [6*dx, 6*dy, 5 - (pitch/10)],\n"
+                code += f"        end: [rad*dx, rad*dy, 5 + (pitch/10)],\n"
+                code += f"        radius: 3, slices: 4\n"
+                code += f"    }});\n"
+                code += f"    aspas = aspas.union(aspa);\n  }}\n"
+                code += f"  var pieza = hub.union(aspas).subtract(agujero);\n  return pieza;\n}}"
                 txt_code.value = code
 
             elif h == "texto":
@@ -323,7 +347,7 @@ def main(page: ft.Page):
             txt_code.update()
 
         def update_constructor_ui(e=None):
-            for col in [col_custom, col_cubo, col_cilindro, col_engranaje, col_escuadra, col_pcb, col_vslot, col_fijacion, col_abrazadera, col_helice, col_texto]: 
+            for col in [col_custom, col_cubo, col_cilindro, col_engranaje, col_escuadra, col_pcb, col_vslot, col_fijacion, col_rodamiento, col_abrazadera, col_helice, col_texto]: 
                 col.visible = False
             v = herramienta_actual
             if v == "custom": col_custom.visible = True
@@ -334,13 +358,14 @@ def main(page: ft.Page):
             elif v == "pcb": col_pcb.visible = True
             elif v == "vslot": col_vslot.visible = True
             elif v == "fijacion": col_fijacion.visible = True
+            elif v == "rodamiento": col_rodamiento.visible = True
             elif v == "abrazadera": col_abrazadera.visible = True
             elif v == "helice": col_helice.visible = True
             elif v == "texto": col_texto.visible = True
             generate_param_code()
             page.update()
 
-        # UI Blocks Base
+        # UI Blocks
         col_custom = ft.Column([
             ft.Text("Módulo Activo: Tu Código de IA", color="green", weight="bold"),
             ft.Row([
@@ -382,13 +407,20 @@ def main(page: ft.Page):
         sl_v_l, r_v_l = create_slider("Longitud", 10, 300, 50, False, generate_param_code)
         col_vslot = ft.Column([ft.Text("Perfil 2020 para CNC", color="grey", size=12), ft.Container(content=ft.Column([r_v_l]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
-        # MÓDULO UNIFICADO: TORNILLO + TUERCA (FASTENERS)
         sl_fij_m, r_fij_m = create_slider("Métrica (M)", 3, 20, 8, True, generate_param_code)
         sl_fij_l, r_fij_l = create_slider("Largo Tornillo", 0, 100, 30, False, generate_param_code)
         sl_fij_tol, r_fij_tol = create_slider("Tolerancia", 0, 1.0, 0.2, False, generate_param_code)
         col_fijacion = ft.Column([
             ft.Text("Módulo Fasteners ISO. Si Largo=0 genera Tuerca. Si Largo>0 genera Tornillo con rosca simulada.", color="amber", size=11),
             ft.Container(content=ft.Column([r_fij_m, r_fij_l, r_fij_tol]), bgcolor="#1e1e1e", padding=10, border_radius=8)
+        ], visible=False)
+
+        sl_rod_dint, r_rod_dint = create_slider("Ø Eje Interno", 3, 50, 8, False, generate_param_code)
+        sl_rod_dext, r_rod_dext = create_slider("Ø Externo", 10, 100, 22, False, generate_param_code)
+        sl_rod_h, r_rod_h = create_slider("Altura (mm)", 3, 30, 7, False, generate_param_code)
+        col_rodamiento = ft.Column([
+            ft.Text("Rodamiento de bolas paramétrico (Ensamblaje). Pista interna, externa y esferas dinámicas.", color="amber", size=12),
+            ft.Container(content=ft.Column([r_rod_dint, r_rod_dext, r_rod_h]), bgcolor="#1e1e1e", padding=10, border_radius=8)
         ], visible=False)
 
         sl_clamp_d, r_clamp_d = create_slider("Ø Tubo", 10, 100, 25, False, generate_param_code)
@@ -404,7 +436,6 @@ def main(page: ft.Page):
         tf_texto = ft.TextField(label="Texto (Max 12)", value="AITOR", max_length=12, on_change=generate_param_code)
         sl_txt_h, r_txt_h = create_slider("Grosor Extrusión", 1, 20, 5, False, generate_param_code)
         col_texto = ft.Column([ft.Text("Generador Voxel integrado. Cero latencia.", color="grey", size=12), ft.Container(content=ft.Column([tf_texto, r_txt_h]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
-
 
         # CARRUSEL
         def select_tool(nombre_herramienta):
@@ -424,7 +455,8 @@ def main(page: ft.Page):
 
         row_miniaturas = ft.Row([
             create_thumbnail("🧠", "Mi Código", "custom", "#000000"),
-            create_thumbnail("🔩", "Tornillería", "fijacion", "#c62828"), # MÓDULO UNIFICADO TORNILLO/TUERCA
+            create_thumbnail("🔩", "Tornillería", "fijacion", "#c62828"),
+            create_thumbnail("🛞", "Rodamiento", "rodamiento", "#5d4037"), # LA NUEVA FASE: ENSAMBLAJES
             create_thumbnail("🔠", "Texto 3D", "texto", "#c2185b"), 
             create_thumbnail("🚁", "Hélice", "helice", "#00838f"), 
             create_thumbnail("🗜️", "Abrazadera", "abrazadera", "#1565c0"),
@@ -440,7 +472,7 @@ def main(page: ft.Page):
             ft.Text("1. Galería Mecánica:", weight="bold", color="amber"),
             row_miniaturas,
             ft.Divider(),
-            col_custom, col_texto, col_helice, col_fijacion, col_abrazadera, col_cubo, col_cilindro, col_engranaje, col_escuadra, col_pcb, col_vslot,
+            col_custom, col_texto, col_helice, col_fijacion, col_rodamiento, col_abrazadera, col_cubo, col_cilindro, col_engranaje, col_escuadra, col_pcb, col_vslot,
             ft.Container(height=10),
             ft.ElevatedButton("▶ ACTUALIZAR MALLA (3D)", on_click=lambda _: run_render(), color="black", bgcolor="amber", height=60, width=float('inf'))
         ], expand=True, scroll="auto")
