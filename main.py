@@ -56,7 +56,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v5.1 (CONSTRUCTOR PRO)
+# APLICACIÓN PRINCIPAL v5.1 (CONSTRUCTOR PRO FIX)
 # =========================================================
 def main(page: ft.Page):
     try:
@@ -163,7 +163,8 @@ def main(page: ft.Page):
                 caras = int(sl_p_lados.value)
                 code = f"function main() {{\n  var ext = CSG.cylinder({{start:[0,0,0], end:[0,0,{sl_p_h.value}], radius:{sl_p_rext.value}, slices:{caras}}});\n"
                 if rint > 0:
-                    code += f"  var int = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_p_h.value+2}], radius:{rint}, slices:{caras}});\n  return ext.subtract(int);\n}}"
+                    # AQUÍ ESTABA EL ERROR (faltaba una llave extra para cerrar el objeto JS en el f-string)
+                    code += f"  var int = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_p_h.value+2}], radius:{rint}, slices:{caras}}});\n  return ext.subtract(int);\n}}"
                 else:
                     code += f"  return ext;\n}}"
                     
