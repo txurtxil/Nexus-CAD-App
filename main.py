@@ -56,15 +56,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v7.0.3 (BULLETPROOF)
+# APLICACIÓN PRINCIPAL v7.0.4 (SAFE CORE EDITION)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v7.0.3"
+        page.title = "NEXUS CAD v7.0"
         page.theme_mode = "dark"
         page.padding = 0 
         
-        status = ft.Text("NEXUS v7.0 | Motor Industrial Activo", color="green")
+        status = ft.Text("NEXUS v7.0 | Suite Profesional", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -242,7 +242,7 @@ def main(page: ft.Page):
                 code += f"  var cut_pin = CSG.cylinder({{start:[0,0,l/3-d/2], end:[0,0,2*l/3+d/2], radius:d/4, slices:32}});\n"
                 code += f"  var fijo = fix.union(fix2).subtract(cut_pin).union(pin);\n"
                 code += f"  var movil = move.subtract(cut_pin);\n"
-                code += f"  return fijo.union(movil.translate([0, d+2, 0])); // Offset para ver interior\n}}"
+                code += f"  return fijo.union(movil.translate([0, d+2, 0])); // Offset visual\n}}"
 
             txt_code.value = code
             txt_code.update()
@@ -318,31 +318,34 @@ def main(page: ft.Page):
         sl_bi_tol, r_bi_tol = create_slider("Tolerancia", 0.1, 1.0, 0.3, False, generate_param_code)
         col_bisagra = ft.Column([ft.Text("Despiece de bisagra Print-in-Place.", color="grey", size=12), ft.Container(content=ft.Column([r_bi_l, r_bi_d, r_bi_tol]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
+        # ------------------------------------------------------------------
+        # FIX DEFINITIVO PARA LAS MINIATURAS: CERO PARÁMETROS PELIGROSOS. 
+        # Cero alineaciones, cero enums. Puro Container básico 100% nativo.
+        # ------------------------------------------------------------------
         def select_tool(nombre_herramienta):
             nonlocal herramienta_actual
             herramienta_actual = nombre_herramienta
             update_constructor_ui()
 
-        # FIX SEGURO: ft.Container no recibe parámetros raros
         def create_thumbnail(icon, title, tool_id, color):
             return ft.Container(
                 content=ft.Column([
-                    ft.Text(icon, size=35), 
-                    ft.Text(title, size=11, text_align="center", weight="bold")
-                ], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
-                width=90, height=90, bgcolor=color, border_radius=12, ink=True,
+                    ft.Text(icon, size=30), 
+                    ft.Text(title, size=10, color="white", weight="bold")
+                ]),
+                width=80, height=80, bgcolor=color, border_radius=8, padding=10,
                 on_click=lambda _: select_tool(tool_id)
             )
 
         row_miniaturas = ft.Row([
-            create_thumbnail("📦", "Cubo / Caja", "cubo", "#37474f"),
-            create_thumbnail("🔄", "Polar Array", "polar", "#880e4f"),
+            create_thumbnail("📦", "Caja", "cubo", "#37474f"),
+            create_thumbnail("🔄", "Polar", "polar", "#880e4f"),
             create_thumbnail("🚪", "Bisagra", "bisagra", "#4a148c"),
-            create_thumbnail("🏗️", "V-Slot 2020", "vslot", "#1a237e"),
-            create_thumbnail("🔌", "Caja PCB", "pcb", "#004d40"),
-            create_thumbnail("⚙️", "Engranaje", "engranaje", "#ff6f00"),
-            create_thumbnail("🛢️", "Cilindro", "cilindro", "#37474f"),
-            create_thumbnail("📐", "Escuadra L", "escuadra", "#bf360c"),
+            create_thumbnail("🏗️", "V-Slot", "vslot", "#1a237e"),
+            create_thumbnail("🔌", "PCB", "pcb", "#004d40"),
+            create_thumbnail("⚙️", "Piñón", "engranaje", "#ff6f00"),
+            create_thumbnail("🛢️", "Tubo", "cilindro", "#37474f"),
+            create_thumbnail("📐", "Escuadra", "escuadra", "#bf360c"),
             create_thumbnail("🔩", "NEMA 17", "nema", "#1b5e20"),
         ], scroll="auto")
 
@@ -428,7 +431,7 @@ def main(page: ft.Page):
             if idx == 3: update_files()
             page.update()
 
-        # BARRA DE NAVEGACIÓN INFERIOR
+        # BARRA DE NAVEGACIÓN INFERIOR (Ya incluye el botón "3D", por lo que el Flotante sobra)
         nav_bar = ft.Row([
             ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0)),
             ft.ElevatedButton("🛠️ BUILD", on_click=lambda _: set_tab(1), color="black", bgcolor="amber"),
@@ -436,11 +439,7 @@ def main(page: ft.Page):
             ft.ElevatedButton("📁 FILES", on_click=lambda _: set_tab(3)),
         ], scroll="auto")
 
-        # FIX DEFINITIVO (BLINDADO): Eliminado el argumento 'text' que causaba el Crash en Termux.
-        # Solo conservamos 'icon', 'on_click' y 'bgcolor', que son 100% universales en cualquier versión de Flet.
-        page.floating_action_button = ft.FloatingActionButton(
-            icon="play_arrow", on_click=lambda _: set_tab(2), bgcolor="amber"
-        )
+        # ELIMINADO FloatingActionButton para garantizar el arranque sin cuelgues de interfaz
 
         root_container = ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True)
         page.add(root_container)
