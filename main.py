@@ -56,15 +56,15 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v4.3
+# APLICACIÓN PRINCIPAL v5.0 (FASE 1 - CONSTRUCTOR VISUAL)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v4.3"
+        page.title = "NEXUS CAD v5.0"
         page.theme_mode = "dark"
         page.padding = 0 
         
-        status = ft.Text("Sistema ToolKit v4.3 Activo", color="green")
+        status = ft.Text("NEXUS v5.0 | Motor Paramétrico Activo", color="green")
 
         def open_dialog(dialog):
             try: page.open(dialog)
@@ -89,7 +89,7 @@ def main(page: ft.Page):
             )
             open_dialog(dlg_copy)
 
-        # FIX SUPREMO DEL PORTAPAPELES: Fallback automático a modo visual
+        # FIX SUPREMO DEL PORTAPAPELES
         def copy_text(text_to_copy):
             try:
                 page.set_clipboard(str(text_to_copy))
@@ -103,26 +103,25 @@ def main(page: ft.Page):
                     status.color = "green"
                     page.update()
                 except:
-                    # Si falla la seguridad de Android, abrimos el código para copia manual garantizada
                     export_manual(str(text_to_copy), "Copiar Prompt Manualmente")
                     status.value = "⚠️ Portapapeles bloqueado. Usa copia manual."
                     status.color = "amber"
                     page.update()
 
-        # --- PLANTILLAS BÁSICAS ---
+        # --- EDITOR JS-CSG BASE v4.3 ---
         T_CARCASA = "function main() {\n  var ext = CSG.cube({center:[0,0,10], radius:[40,25,10]});\n  var int = CSG.cube({center:[0,0,12], radius:[38,23,10]});\n  return ext.subtract(int);\n}"
         txt_code = ft.TextField(label="Código JS-CSG", multiline=True, expand=True, value=T_CARCASA)
 
         def load_template(t):
             txt_code.value = t
             txt_code.update() 
-            set_tab(0) # Salta al editor
+            set_tab(0) 
             status.value = "✓ Código cargado en el Editor."
             status.color = "green"
             status.update()
 
         def clear_editor():
-            txt_code.value = "function main() {\n  // Inicia tu diseño aquí\n  \n  return CSG.cube({center:[0,0,0], radius:[10,10,10]});\n}"
+            txt_code.value = "function main() {\n  return CSG.cube({center:[0,0,0], radius:[10,10,10]});\n}"
             txt_code.update()
             status.value = "✓ Editor vaciado."
             status.color = "green"
@@ -139,12 +138,94 @@ def main(page: ft.Page):
             ft.ElevatedButton("- Restar", on_click=lambda _: inject_snippet("  var final = pieza1.subtract(pieza2);"), bgcolor="#4e342e", color="white"),
         ], scroll="auto")
 
-        # --- GESTOR DE ARCHIVOS ---
+        def run_render():
+            global LATEST_CODE_B64
+            LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
+            set_tab(2) # El Visor 3D es ahora la pestaña 2
+            page.update()
+
+        # =========================================================
+        # FASE 1: EL MOTOR PARAMÉTRICO VISUAL (NUEVO)
+        # =========================================================
+        def generate_param_code(e=None):
+            shape = param_shape_dd.value
+            if shape == "Cubo Sólido":
+                code = f"function main() {{\n  return CSG.cube({{center:[0,0,{sl_c_z.value/2}], radius:[{sl_c_x.value/2}, {sl_c_y.value/2}, {sl_c_z.value/2}]}});\n}}"
+            elif shape == "Tubo / Cilindro":
+                # Asegurar que el radio interior nunca sea mayor al exterior
+                rint = min(sl_t_rin.value, sl_t_rext.value - 1)
+                if rint < 0: rint = 0
+                
+                code = f"function main() {{\n  var ext = CSG.cylinder({{start:[0,0,0], end:[0,0,{sl_t_h.value}], radius:{sl_t_rext.value}, slices:64}});\n"
+                if rint > 0:
+                    code += f"  var int = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_t_h.value+2}], radius:{rint}, slices:64}});\n  return ext.subtract(int);\n}}"
+                else:
+                    code += f"  return ext;\n}}"
+            elif shape == "Caja Hueca":
+                g = sl_b_g.value
+                code = f"function main() {{\n  var ext = CSG.cube({{center:[0,0,{sl_b_z.value/2}], radius:[{sl_b_x.value/2}, {sl_b_y.value/2}, {sl_b_z.value/2}]}});\n  var int = CSG.cube({{center:[0,0,{sl_b_z.value/2 + g}], radius:[{sl_b_x.value/2 - g}, {sl_b_y.value/2 - g}, {sl_b_z.value/2}]}});\n  return ext.subtract(int);\n}}"
+
+            txt_code.value = code
+            txt_code.update()
+            status.value = "✓ Código inyectado por Constructor."
+            status.color = "amber"
+            status.update()
+
+        def update_constructor_ui(e=None):
+            col_cubo.visible = param_shape_dd.value == "Cubo Sólido"
+            col_tubo.visible = param_shape_dd.value == "Tubo / Cilindro"
+            col_caja.visible = param_shape_dd.value == "Caja Hueca"
+            generate_param_code()
+            page.update()
+
+        param_shape_dd = ft.Dropdown(
+            options=[ft.dropdown.Option("Cubo Sólido"), ft.dropdown.Option("Tubo / Cilindro"), ft.dropdown.Option("Caja Hueca")],
+            value="Cubo Sólido",
+            on_change=update_constructor_ui,
+            label="1. Selecciona Primitiva Paramétrica",
+            bgcolor="#212121"
+        )
+
+        # Sliders del Cubo
+        sl_c_x = ft.Slider(min=1, max=200, value=20, label="Ancho (X): {value}mm", on_change=generate_param_code)
+        sl_c_y = ft.Slider(min=1, max=200, value=20, label="Profundidad (Y): {value}mm", on_change=generate_param_code)
+        sl_c_z = ft.Slider(min=1, max=200, value=20, label="Alto (Z): {value}mm", on_change=generate_param_code)
+        col_cubo = ft.Column([ft.Text("2. Ajusta las dimensiones en milímetros:", color="grey"), sl_c_x, sl_c_y, sl_c_z], visible=True)
+
+        # Sliders del Tubo
+        sl_t_rext = ft.Slider(min=2, max=100, value=20, label="Radio Exterior: {value}mm", on_change=generate_param_code)
+        sl_t_rin = ft.Slider(min=0, max=99, value=15, label="Radio Interior: {value}mm", on_change=generate_param_code)
+        sl_t_h = ft.Slider(min=1, max=200, value=10, label="Altura (Z): {value}mm", on_change=generate_param_code)
+        col_tubo = ft.Column([ft.Text("2. Ajusta radios y altura:", color="grey"), sl_t_rext, sl_t_rin, sl_t_h], visible=False)
+
+        # Sliders de Caja Hueca
+        sl_b_x = ft.Slider(min=5, max=200, value=50, label="Ancho (X): {value}mm", on_change=generate_param_code)
+        sl_b_y = ft.Slider(min=5, max=200, value=30, label="Profundidad (Y): {value}mm", on_change=generate_param_code)
+        sl_b_z = ft.Slider(min=5, max=200, value=20, label="Alto (Z): {value}mm", on_change=generate_param_code)
+        sl_b_g = ft.Slider(min=1, max=20, value=2, label="Grosor Pared: {value}mm", on_change=generate_param_code)
+        col_caja = ft.Column([ft.Text("2. Ajusta volumen exterior y grosor de pared:", color="grey"), sl_b_x, sl_b_y, sl_b_z, sl_b_g], visible=False)
+
+        view_constructor = ft.Column([
+            ft.Text("🛠️ Motor Paramétrico Visual", weight="bold", color="amber", size=18),
+            ft.Text("Mueve los deslizadores. El código JS se escribirá solo.", color="grey", size=12),
+            param_shape_dd,
+            ft.Divider(),
+            col_cubo,
+            col_tubo,
+            col_caja,
+            ft.Divider(),
+            ft.ElevatedButton("▶ COMPILAR MALLA 3D", on_click=lambda _: run_render(), color="white", bgcolor="#004d40", height=60, width=float('inf'))
+        ], expand=True, scroll="auto")
+
+        # =========================================================
+        # GESTOR DE ARCHIVOS
+        # =========================================================
         file_list = ft.ListView(expand=True, spacing=10)
 
         def update_files():
             file_list.controls.clear()
             for f in reversed(sorted(os.listdir(EXPORT_DIR))):
+                if f == "nexus_config.json": continue
                 def make_load(name): return lambda _: load_file_content(name)
                 def make_copy(name): return lambda _: export_manual(open(os.path.join(EXPORT_DIR, name), "r").read())
                 def make_del(name): return lambda _: delete_file(name)
@@ -184,19 +265,16 @@ def main(page: ft.Page):
             dlg = ft.AlertDialog(title=ft.Text("Renombrar Proyecto"), content=txt_new, actions=[ft.ElevatedButton("GUARDAR", on_click=do_rename, bgcolor="#0d47a1", color="white")])
             open_dialog(dlg)
 
-        def run_render():
-            global LATEST_CODE_B64
-            LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
-            set_tab(1) 
-            page.update()
-
         def save_project():
             fname = "nexus_" + str(int(time.time())) + ".jscad"
             with open(os.path.join(EXPORT_DIR, fname), "w") as f: f.write(txt_code.value)
             update_files()
+            status.value = f"✓ Guardado: {fname}"
+            status.color = "green"
+            status.update()
 
         # =========================================================
-        # MÓDULOS DE IA Y GALERÍA (ACCORDIONS)
+        # MÓDULOS DE LIBRERÍA (SIN IA DE RED)
         # =========================================================
         AI_RULE = " REGLA CRÍTICA: Escribe en Javascript puro para CSG.js. NUNCA uses cylinder() o translate() sueltos. Usa primitivas absolutas: CSG.cube({center:[x,y,z], radius:[x,y,z]}) y CSG.cylinder({start:[x,y,z], end:[x,y,z], radius:R, slices:N}). Devuelve la pieza final en 'function main() { ... return pieza; }'."
 
@@ -232,7 +310,6 @@ def main(page: ft.Page):
         ia_electronica = [("Caja Raspberry Pi", "Actúa como ingeniero CAD. Haz una caja de 90x60x30mm. Añade agujeros laterales para USB.")]
         ia_mecanismos = [("Rejilla Paramétrica", "Crea un cubo de 100x100x5mm. Usa dos bucles 'for' anidados para restar cilindros cada 10mm.")]
 
-        # GALERÍA DE CÓDIGO MAESTRO
         CODE_ESTACION = """function main() {
   var base = CSG.cube({center: [0,0,12.5], radius: [80,60,12.5]});
   var agujeros = [];
@@ -293,7 +370,7 @@ def main(page: ft.Page):
             ft.Text("Ingeniería Asistida:", weight="bold", color="cyan"),
             create_gallery("📚", "LIBRERÍA CAD (Ejemplos Listos)", galeria_ejemplos),
             ft.Container(height=10),
-            ft.Text("Catálogo de Prompts IA:", weight="bold", color="grey"),
+            ft.Text("Catálogo de Prompts para Mañana:", weight="bold", color="grey"),
             create_folder("⚡", "Electrónica y PCB", ia_electronica),
             create_folder("⚙️", "Mecanismos Paramétricos", ia_mecanismos),
         ], expand=True, scroll="auto")
@@ -302,20 +379,25 @@ def main(page: ft.Page):
 
         def set_tab(idx):
             if idx == 0: main_container.content = view_editor
-            elif idx == 1: main_container.content = view_visor
-            elif idx == 2: main_container.content = view_archivos
-            elif idx == 3: main_container.content = view_ia
+            elif idx == 1: main_container.content = view_constructor
+            elif idx == 2: main_container.content = view_visor
+            elif idx == 3: main_container.content = view_archivos
+            elif idx == 4: main_container.content = view_ia
             page.update()
 
         nav_bar = ft.Row([
-            ft.ElevatedButton("💻 EDITOR", on_click=lambda _: set_tab(0)),
-            ft.ElevatedButton("👁️ VISOR", on_click=lambda _: set_tab(1)),
-            ft.ElevatedButton("📁 ARCHIVOS", on_click=lambda _: (update_files(), set_tab(2))),
-            ft.ElevatedButton("🧠 IA & LIBRERÍA", on_click=lambda _: set_tab(3), color="black", bgcolor="cyan"),
+            ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0)),
+            ft.ElevatedButton("🛠️ BUILD", on_click=lambda _: set_tab(1), color="black", bgcolor="amber"),
+            ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(2)),
+            ft.ElevatedButton("📁 FILE", on_click=lambda _: (update_files(), set_tab(3))),
+            ft.ElevatedButton("📚 LIB", on_click=lambda _: set_tab(4), color="black", bgcolor="cyan"),
         ], scroll="auto")
 
         root_container = ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True)
         page.add(root_container)
+        
+        # Iniciar en la pestaña del constructor para probarlo
+        generate_param_code()
         update_files()
 
     except Exception:
