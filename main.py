@@ -56,7 +56,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v7.0 (ULTIMATE SUITE)
+# APLICACIÓN PRINCIPAL v7.0.1 (ULTIMATE SUITE FIX)
 # =========================================================
 def main(page: ft.Page):
     try:
@@ -111,7 +111,7 @@ def main(page: ft.Page):
         # MODIFICADORES TIPO BLENDER
         row_modificadores = ft.Row([
             ft.Text("Modificadores:", color="amber", size=12, weight="bold"),
-            ft.ElevatedButton("🕳️ Vaciado (Shell)", on_click=lambda _: inject_snippet("  // Modificador Shell: Escala y resta\n  var vaciado = pieza.scale([0.9, 0.9, 0.9]);\n  pieza = pieza.subtract(vaciado);"), bgcolor="#4e342e", color="white"),
+            ft.ElevatedButton("🕳️ Vaciado", on_click=lambda _: inject_snippet("  // Modificador Shell: Escala y resta\n  var vaciado = pieza.scale([0.9, 0.9, 0.9]);\n  pieza = pieza.subtract(vaciado);"), bgcolor="#4e342e", color="white"),
             ft.ElevatedButton("🔄 Redondeo", on_click=lambda _: inject_snippet("  // Modificador Redondeo: Expand matemático\n  pieza = pieza.expand(2, 16); // 2mm, 16 caras"), bgcolor="#1b5e20", color="white"),
             ft.ElevatedButton("🎛️ Array Lineal", on_click=lambda _: inject_snippet("  // Modificador Array: Copias en X\n  var array = pieza;\n  for(var i=1; i<4; i++) { array = array.union(pieza.translate([i*20, 0, 0])); }\n  pieza = array;"), bgcolor="#0d47a1", color="white"),
         ], scroll="auto")
@@ -119,7 +119,7 @@ def main(page: ft.Page):
         row_snippets = ft.Row([
             ft.Text("Primitivas:", color="grey", size=12),
             ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[5,5,5]});")),
-            ft.ElevatedButton("+ Cil", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});")),
+            ft.ElevatedButton("+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});")),
             ft.ElevatedButton("- Restar", on_click=lambda _: inject_snippet("  var final = pieza1.subtract(pieza2);")),
         ], scroll="auto")
 
@@ -203,6 +203,17 @@ def main(page: ft.Page):
                 code += f"    var hole = CSG.cylinder({{start:[m[i][0]*dx, m[i][1]*dy, 2], end:[m[i][0]*dx, m[i][1]*dy, h], radius: 1.5, slices:16}});\n"
                 code += f"    box = box.union(cyl).subtract(hole);\n  }}\n  return box;\n}}"
 
+            elif h == "acople":
+                d1, d2, dext, ht = sl_a_d1.value, sl_a_d2.value, sl_a_dext.value, sl_a_h.value
+                code = f"function main() {{\n  var d1 = {d1}; var d2 = {d2}; var dext = {dext}; var h = {ht};\n"
+                code += f"  var body = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:dext/2, slices:64}});\n"
+                code += f"  var h1 = CSG.cylinder({{start:[0,0,-1], end:[0,0,h/2 + 0.5], radius:d1/2, slices:32}});\n"
+                code += f"  var h2 = CSG.cylinder({{start:[0,0,h/2 - 0.5], end:[0,0,h+1], radius:d2/2, slices:32}});\n"
+                code += f"  var slit = CSG.cube({{center:[dext/2, 0, h/2], radius:[dext/2, 0.5, h/2 + 1]}});\n"
+                code += f"  var scr1 = CSG.cylinder({{start:[0, -dext, h/4], end:[0, dext, h/4], radius:1.5, slices:16}});\n"
+                code += f"  var scr2 = CSG.cylinder({{start:[0, -dext, 3*h/4], end:[0, dext, 3*h/4], radius:1.5, slices:16}});\n"
+                code += f"  return body.subtract(h1).subtract(h2).subtract(slit).subtract(scr1).subtract(scr2);\n}}"
+
             elif h == "vslot":
                 l = sl_v_l.value
                 code = f"function main() {{\n  var l = {l};\n  var b = CSG.cube({{center:[0,0,l/2], radius:[10,10,l/2]}});\n"
@@ -213,7 +224,6 @@ def main(page: ft.Page):
                 code += f"  b = b.subtract(CSG.cube({{center:[-10,0,l/2], radius:[2,3,l/2+1]}})).subtract(CSG.cube({{center:[-8.5,0,l/2], radius:[1.5,5,l/2+1]}}));\n"
                 code += f"  return b;\n}}"
 
-            # NUEVAS FUNCIONALIDADES v7.0
             elif h == "polar":
                 items, diam, rr, hr = int(sl_polar_n.value), sl_polar_d.value, sl_polar_rr.value, sl_polar_h.value
                 code = f"function main() {{\n  var n = {items}; var radio = {diam/2}; var h = {hr};\n"
@@ -232,7 +242,7 @@ def main(page: ft.Page):
                 code += f"  var cut_pin = CSG.cylinder({{start:[0,0,l/3-d/2], end:[0,0,2*l/3+d/2], radius:d/4, slices:32}});\n"
                 code += f"  var fijo = fix.union(fix2).subtract(cut_pin).union(pin);\n"
                 code += f"  var movil = move.subtract(cut_pin);\n"
-                code += f"  return fijo.union(movil.translate([0, d+2, 0])); // Separados para ver el interior\n}}"
+                code += f"  return fijo.union(movil.translate([0, d+2, 0])); // Offset para ver la articulacion\n}}"
 
             txt_code.value = code
             txt_code.update()
@@ -288,22 +298,27 @@ def main(page: ft.Page):
         sl_pcb_t, r_pcb_t = create_slider("Grosor Pared", 1, 10, 2, False, generate_param_code)
         col_pcb = ft.Column([ft.Container(content=ft.Column([r_pcb_x, r_pcb_y, r_pcb_h, r_pcb_t]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
-        sl_v_l, r_v_l = create_slider("Longitud", 10, 300, 50, False, generate_param_code)
-        col_vslot = ft.Column([ft.Text("Perfil estructural 20x20 compatible con T-Nuts.", color="grey", size=12), ft.Container(content=ft.Column([r_v_l]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
+        sl_a_d1, r_a_d1 = create_slider("Eje Motor (Ø)", 2, 20, 5, False, generate_param_code)
+        sl_a_d2, r_a_d2 = create_slider("Varilla (Ø)", 2, 20, 8, False, generate_param_code)
+        sl_a_dext, r_a_dext = create_slider("Ø Ext Acople", 10, 50, 20, False, generate_param_code)
+        sl_a_h, r_a_h = create_slider("Largo Total", 10, 80, 25, False, generate_param_code)
+        col_acople = ft.Column([ft.Container(content=ft.Column([r_a_d1, r_a_d2, r_a_dext, r_a_h]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
-        # UI Blocks v7.0
+        sl_v_l, r_v_l = create_slider("Longitud", 10, 300, 50, False, generate_param_code)
+        col_vslot = ft.Column([ft.Text("Perfil 2020 para CNC y 3D Print", color="grey", size=12), ft.Container(content=ft.Column([r_v_l]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
+
         sl_polar_n, r_polar_n = create_slider("Nº Huecos", 2, 24, 6, True, generate_param_code)
         sl_polar_d, r_polar_d = create_slider("Ø Distribución", 10, 200, 50, False, generate_param_code)
         sl_polar_rr, r_polar_rr = create_slider("Radio Hueco", 1, 20, 3, False, generate_param_code)
         sl_polar_h, r_polar_h = create_slider("Grosor Placa", 1, 50, 5, False, generate_param_code)
-        col_polar = ft.Column([ft.Text("Genera bridas o llantas con orificios circulares.", color="grey", size=12), ft.Container(content=ft.Column([r_polar_n, r_polar_d, r_polar_rr, r_polar_h]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
+        col_polar = ft.Column([ft.Text("Genera bridas o llantas circulares.", color="grey", size=12), ft.Container(content=ft.Column([r_polar_n, r_polar_d, r_polar_rr, r_polar_h]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
         sl_bi_l, r_bi_l = create_slider("Largo Total", 10, 100, 30, False, generate_param_code)
         sl_bi_d, r_bi_d = create_slider("Diámetro", 5, 30, 10, False, generate_param_code)
         sl_bi_tol, r_bi_tol = create_slider("Tolerancia", 0.1, 1.0, 0.3, False, generate_param_code)
-        col_bisagra = ft.Column([ft.Text("Genera el despiece de una bisagra Print-in-Place.", color="grey", size=12), ft.Container(content=ft.Column([r_bi_l, r_bi_d, r_bi_tol]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
+        col_bisagra = ft.Column([ft.Text("Despiece de bisagra Print-in-Place.", color="grey", size=12), ft.Container(content=ft.Column([r_bi_l, r_bi_d, r_bi_tol]), bgcolor="#1e1e1e", padding=10, border_radius=8)], visible=False)
 
-        # PARCHE FIX: Carrusel de Miniaturas sin ft.alignment.center directo
+        # FIX APLICADO: Carrusel de Miniaturas sin atributos no soportados
         def select_tool(nombre_herramienta):
             nonlocal herramienta_actual
             herramienta_actual = nombre_herramienta
@@ -322,7 +337,7 @@ def main(page: ft.Page):
         row_miniaturas = ft.Row([
             create_thumbnail("📦", "Cubo / Caja", "cubo", "#37474f"),
             create_thumbnail("🔄", "Polar Array", "polar", "#880e4f"),
-            create_thumbnail("🚪", "Bisagra P-in-P", "bisagra", "#4a148c"),
+            create_thumbnail("🚪", "Bisagra", "bisagra", "#4a148c"),
             create_thumbnail("🏗️", "V-Slot 2020", "vslot", "#1a237e"),
             create_thumbnail("🔌", "Caja PCB", "pcb", "#004d40"),
             create_thumbnail("⚙️", "Engranaje", "engranaje", "#ff6f00"),
@@ -332,7 +347,7 @@ def main(page: ft.Page):
         ], scroll="auto")
 
         view_constructor = ft.Column([
-            ft.Text("1. Selecciona Pieza Base:", weight="bold", color="amber"),
+            ft.Text("1. Selecciona Herramienta:", weight="bold", color="amber"),
             row_miniaturas,
             ft.Divider(),
             ft.Text("2. Parámetros Exactos:", weight="bold", color="cyan"),
@@ -421,9 +436,9 @@ def main(page: ft.Page):
             ft.ElevatedButton("📁 FILES", on_click=lambda _: set_tab(3)),
         ], scroll="auto")
 
-        # BOTÓN FLOTANTE (FAB)
+        # FIX APLICADO: Botón Flotante con icono PLAY_ARROW ultra-seguro y compatible
         page.floating_action_button = ft.FloatingActionButton(
-            icon=ft.icons.VIEW_IN_AR_SHARP, on_click=lambda _: set_tab(2), bgcolor="amber"
+            icon=ft.icons.PLAY_ARROW, on_click=lambda _: set_tab(2), bgcolor="amber"
         )
 
         root_container = ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True)
