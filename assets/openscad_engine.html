@@ -4,48 +4,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>NEXUS CAD PRO - Visor WebGL v3.1</title>
+    <title>NEXUS CAD PRO - Motor Web Worker</title>
     <style>
-        :root {
-            --nexus-cyan: #00E5FF;
-            --nexus-green: #00E676;
-            --nexus-bg: rgba(11, 14, 20, 0.85);
-            --nexus-border: #30363D;
-        }
-        body { margin: 0; overflow: hidden; background-color: #0B0E14; font-family: 'Segoe UI', Tahoma, sans-serif; color: #E6EDF3; }
+        :root { --nexus-cyan: #00E5FF; --nexus-green: #00E676; --nexus-bg: rgba(11, 14, 20, 0.85); --nexus-border: #30363D; }
+        body { margin: 0; overflow: hidden; background-color: #0B0E14; font-family: 'Segoe UI', sans-serif; color: #E6EDF3; }
         #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
         .nexus-panel { position: absolute; background: var(--nexus-bg); border: 1px solid var(--nexus-border); border-radius: 6px; padding: 12px; z-index: 10; backdrop-filter: blur(8px); box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         
-        /* PANEL IZQUIERDO: HERRAMIENTAS */
+        /* TOOLBAR (Top Left) */
         #toolbar { top: 15px; left: 15px; display: flex; flex-direction: column; gap: 8px; width: 140px; }
-        .btn { background: #21262D; border: 1px solid var(--nexus-border); color: #fff; padding: 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; text-transform: uppercase; transition: all 0.2s; text-align: left; display: flex; justify-content: space-between; }
+        .btn { background: #21262D; border: 1px solid var(--nexus-border); color: #fff; padding: 10px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; text-transform: uppercase; text-align: left; display: flex; justify-content: space-between; transition: all 0.2s; }
         .btn:active { transform: scale(0.95); }
-        .btn:hover { border-color: var(--nexus-cyan); }
         
-        /* PANEL DERECHO: HUD DE HARDWARE Y GEOMETRÍA */
-        #hud-panel { top: 15px; right: 15px; width: 220px; font-size: 11px; }
-        .hud-section-title { color: var(--nexus-cyan); font-weight: bold; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--nexus-border); letter-spacing: 1px; font-size: 10px; }
+        /* HUD (Bottom Right) -> Reubicado para no solaparse */
+        #hud-panel { bottom: 15px; right: 15px; width: 220px; font-size: 10px; border-top: 3px solid var(--nexus-cyan); }
+        .hud-section-title { color: var(--nexus-cyan); font-weight: bold; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid var(--nexus-border); letter-spacing: 1px; }
         .hud-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
         .hud-label { color: #8B949E; }
-        .hud-value { color: #fff; font-family: 'Courier New', monospace; text-align: right; word-break: break-all; max-width: 130px; }
+        .hud-value { color: #fff; font-family: 'Courier New', monospace; text-align: right; }
         .hud-value.highlight { color: var(--nexus-green); font-weight: bold; }
         
-        /* CONSOLA INFERIOR */
-        #console { bottom: 15px; left: 15px; width: calc(100vw - 30px); max-width: 500px; max-height: 120px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 10px; display: none; }
-        .log-ok { color: var(--nexus-green); }
-        .log-err { color: #FF5252; }
-        .log-warn { color: #FFAB00; }
-        .log-sys { color: var(--nexus-cyan); }
-
+        /* CONSOLA (Top Right) */
+        #console { top: 15px; right: 15px; width: 250px; max-height: 200px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 10px; display: none; border-top: 3px solid #FFAB00; }
+        .log-sys { color: var(--nexus-cyan); } .log-ok { color: var(--nexus-green); } .log-err { color: #FF5252; }
+        
         /* SPINNER DE CARGA */
-        #loader { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 20; background: var(--nexus-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--nexus-cyan); text-align: center; }
-        .spinner { border: 3px solid rgba(0, 229, 255, 0.2); border-top: 3px solid var(--nexus-cyan); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 0 auto 10px auto; }
+        #loader { display: none; position: absolute; bottom: 15px; left: 15px; z-index: 20; background: var(--nexus-bg); padding: 10px 20px; border-radius: 6px; border-left: 3px solid var(--nexus-cyan); display: flex; align-items: center; gap: 10px; }
+        .spinner { border: 2px solid rgba(0, 229, 255, 0.2); border-top: 2px solid var(--nexus-cyan); border-radius: 50%; width: 16px; height: 16px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/evanw/csg.js@master/csg.js"></script>
 </head>
 <body>
 
@@ -55,15 +45,15 @@
         <button class="btn" style="border-left: 3px solid #00E676;" onclick="toggleAutoRotate()">Rotar <span>🔄</span></button>
         <button class="btn" style="border-left: 3px solid #6200EA;" onclick="toggleCamera()">Cámara <span>🎥</span></button>
         <button class="btn" style="border-left: 3px solid #FFAB00;" onclick="changeMaterial()">Pintura <span>🎨</span></button>
-        <button class="btn" style="border-left: 3px solid #D50000;" onclick="exportSTL()">Bajar STL <span>⬇️</span></button>
         <button class="btn" style="border-left: 3px solid #00B0FF;" onclick="toggleConsole()">Motor Logs <span>🖥️</span></button>
     </div>
 
+    <!-- HUD REUBICADO Y MEJORADO -->
     <div id="hud-panel" class="nexus-panel">
-        <div class="hud-section-title">Hardware API Detectado</div>
-        <div class="hud-row"><span class="hud-label">CPU Cores:</span> <span class="hud-value highlight" id="hw-cpu">-</span></div>
-        <div class="hud-row"><span class="hud-label">Dispositivo RAM:</span> <span class="hud-value" id="hw-ram">-</span></div>
-        <div class="hud-row"><span class="hud-label">Render GPU:</span> <span class="hud-value" id="hw-gpu">Buscando...</span></div>
+        <div class="hud-section-title">NEXUS HW Telemetría</div>
+        <div class="hud-row"><span class="hud-label">CPU Threads:</span> <span class="hud-value highlight" id="hw-cpu">-</span></div>
+        <div class="hud-row"><span class="hud-label">GPU Render:</span> <span class="hud-value" id="hw-gpu">Buscando...</span></div>
+        <div class="hud-row"><span class="hud-label">Motor Core:</span> <span class="hud-value">Web Worker Asíncrono</span></div>
         
         <div style="height: 10px;"></div>
         
@@ -71,78 +61,32 @@
         <div class="hud-row"><span class="hud-label">Eje X (Ancho):</span> <span class="hud-value" id="geo-x">0.00 mm</span></div>
         <div class="hud-row"><span class="hud-label">Eje Y (Largo):</span> <span class="hud-value" id="geo-y">0.00 mm</span></div>
         <div class="hud-row"><span class="hud-label">Eje Z (Alto):</span> <span class="hud-value" id="geo-z">0.00 mm</span></div>
-        <div class="hud-row"><span class="hud-label">Volumen (Aprox):</span> <span class="hud-value" id="geo-vol">0 mm³</span></div>
         <div class="hud-row"><span class="hud-label">Polígonos:</span> <span class="hud-value highlight" id="geo-poly">0</span></div>
+        <div class="hud-row"><span class="hud-label">Tiempo Render:</span> <span class="hud-value" id="geo-time">0 ms</span></div>
     </div>
 
     <div id="console" class="nexus-panel">
-        <div class="log-sys">> Inicializando Telemetría de Hardware...</div>
+        <div class="log-sys">> Inicializando Worker Multi-hilo...</div>
         <div id="log-content"></div>
     </div>
 
-    <div id="loader">
+    <div id="loader" style="display:none;">
         <div class="spinner"></div>
-        <div id="loader-text" style="color: #00E5FF; font-size: 12px; font-weight: bold; letter-spacing: 1px;">COMPILANDO...</div>
+        <div style="color: #00E5FF; font-size: 11px; font-weight: bold;">WORKER PROCESANDO...</div>
     </div>
 
     <script>
         // ========================================================
-        // EXTRACCIÓN DE HARDWARE (REAL)
+        // 1. HARDWARE DETECTION
         // ========================================================
-        function detectHardware() {
-            // CPU Cores Lógicos
-            const cores = navigator.hardwareConcurrency || 'Desconocido';
-            document.getElementById('hw-cpu').innerText = cores;
-            
-            // Memoria RAM (Solo en navegadores basados en Chromium)
-            const ram = navigator.deviceMemory ? `>= ${navigator.deviceMemory} GB` : 'Oculto por SO';
-            document.getElementById('hw-ram').innerText = ram;
-
-            // GPU Info a través de WebGL
-            try {
-                const canvas = document.createElement('canvas');
-                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                if (gl) {
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    const vendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL);
-                    const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL);
-                    // Limpiamos un poco el string larguísimo que suelen dar las GPUs móviles
-                    let gpuName = renderer.split(',')[0].replace('ANGLE (', '');
-                    document.getElementById('hw-gpu').innerText = gpuName;
-                    log(`<span class='log-sys'>> GPU detectada: ${gpuName}</span>`);
-                } else {
-                    document.getElementById('hw-gpu').innerText = "GPU No Disponible";
-                }
-            } catch (e) {
-                document.getElementById('hw-gpu').innerText = "Bloqueado";
-            }
-        }
-
-        // ========================================================
-        // POLYFILLS CSG.JS
-        // ========================================================
-        function injectCSGPolyfills() {
-            if (!CSG.prototype.translate) CSG.prototype.translate = function(v) { return this.transform(CSG.Matrix4x4.translation(v)); };
-            if (!CSG.prototype.scale) CSG.prototype.scale = function(v) { if(typeof v === 'number') v = [v,v,v]; return this.transform(CSG.Matrix4x4.scaling(v)); };
-            if (!CSG.prototype.rotateX) {
-                CSG.prototype.rotateX = function(deg) { return this.transform(CSG.Matrix4x4.rotationX(deg)); };
-                CSG.prototype.rotateY = function(deg) { return this.transform(CSG.Matrix4x4.rotationY(deg)); };
-                CSG.prototype.rotateZ = function(deg) { return this.transform(CSG.Matrix4x4.rotationZ(deg)); };
-            }
-        }
-
-        // ========================================================
-        // ESTADO GLOBAL Y UI
-        // ========================================================
-        let scene, camera, renderer, controls;
-        let currentMesh = null;
-        let matIndex = 0;
-        const materials = [
-            new THREE.MeshStandardMaterial({ color: 0x00E5FF, roughness: 0.2, metalness: 0.8 }), 
-            new THREE.MeshStandardMaterial({ color: 0xFFAB00, roughness: 0.4, metalness: 0.5 }), 
-            new THREE.MeshNormalMaterial(), 
-            new THREE.MeshBasicMaterial({ color: 0x00E676, wireframe: true }) 
-        ];
+        document.getElementById('hw-cpu').innerText = navigator.hardwareConcurrency || 'N/A';
+        try {
+            const canvas = document.createElement('canvas');
+            const gl = canvas.getContext('webgl');
+            const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+            let gpuName = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL).split(',')[0].replace('ANGLE (', '').substring(0, 20);
+            document.getElementById('hw-gpu').innerText = gpuName;
+        } catch (e) { document.getElementById('hw-gpu').innerText = "Bloqueado"; }
 
         function log(msg) {
             const div = document.getElementById('log-content');
@@ -154,153 +98,145 @@
             c.style.display = c.style.display === 'none' || c.style.display === '' ? 'block' : 'none';
         }
 
+        // ========================================================
+        // 2. THREE.JS SETUP
+        // ========================================================
+        let scene, camera, renderer, controls, currentMesh = null;
+        let matIndex = 0;
+        const materials = [
+            new THREE.MeshStandardMaterial({ color: 0x00E5FF, roughness: 0.2, metalness: 0.8 }), 
+            new THREE.MeshStandardMaterial({ color: 0xFFAB00, roughness: 0.4, metalness: 0.5 }), 
+            new THREE.MeshNormalMaterial(), 
+            new THREE.MeshBasicMaterial({ color: 0x00E676, wireframe: true }) 
+        ];
+
         function initWebGL() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
-            
-            // Grid de Ingeniería
-            const grid = new THREE.GridHelper(200, 40, 0x30363D, 0x161B22);
-            grid.position.y = -0.1;
-            scene.add(grid);
+            scene.add(new THREE.GridHelper(200, 40, 0x30363D, 0x161B22));
 
-            // Iluminación Profesional
             scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            dirLight.position.set(50, 100, 50);
-            scene.add(dirLight);
-            const backLight = new THREE.DirectionalLight(0x00E5FF, 0.4);
-            backLight.position.set(-50, 50, -50);
-            scene.add(backLight);
+            const dl = new THREE.DirectionalLight(0xffffff, 0.8); dl.position.set(50, 100, 50); scene.add(dl);
+            const bl = new THREE.DirectionalLight(0x00E5FF, 0.4); bl.position.set(-50, 50, -50); scene.add(bl);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.position.set(60, 40, 60);
 
             renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             container.appendChild(renderer.domElement);
 
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
 
             window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
+                camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
                 renderer.setSize(window.innerWidth, window.innerHeight);
             });
-
             animate();
-            injectCSGPolyfills();
-            detectHardware();
         }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
         function toggleAutoRotate() { controls.autoRotate = !controls.autoRotate; }
-        function changeMaterial() {
-            if(currentMesh) {
-                matIndex = (matIndex + 1) % materials.length;
-                currentMesh.material = materials[matIndex];
-            }
-        }
-        function toggleCamera() {
-            if(camera.fov === 45) { camera.fov = 10; camera.position.multiplyScalar(4); } 
-            else { camera.fov = 45; camera.position.multiplyScalar(0.25); }
-            camera.updateProjectionMatrix();
-        }
+        function changeMaterial() { if(currentMesh) { matIndex = (matIndex + 1) % materials.length; currentMesh.material = materials[matIndex]; } }
+        function toggleCamera() { camera.fov = camera.fov === 45 ? 10 : 45; camera.position.multiplyScalar(camera.fov === 10 ? 4 : 0.25); camera.updateProjectionMatrix(); }
 
         // ========================================================
-        // CONVERSOR CSG -> THREE.JS
+        // 3. WEB WORKER ARCHITECTURE (MAGIA MULTI-HILO)
         // ========================================================
-        function CSGToBufferGeometry(csg) {
-            const geom = new THREE.BufferGeometry();
-            const vertices = [];
-            const normals = [];
-            const polys = csg.toPolygons();
-
-            for (let i = 0; i < polys.length; i++) {
-                const poly = polys[i];
-                for (let j = 2; j < poly.vertices.length; j++) {
-                    const v0 = poly.vertices[0];
-                    const v1 = poly.vertices[j - 1];
-                    const v2 = poly.vertices[j];
-
-                    vertices.push(v0.pos.x, v0.pos.y, v0.pos.z);
-                    vertices.push(v1.pos.x, v1.pos.y, v1.pos.z);
-                    vertices.push(v2.pos.x, v2.pos.y, v2.pos.z);
-
-                    normals.push(v0.normal.x, v0.normal.y, v0.normal.z);
-                    normals.push(v1.normal.x, v1.normal.y, v1.normal.z);
-                    normals.push(v2.normal.x, v2.normal.y, v2.normal.z);
-                }
-            }
-            geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-            return geom;
-        }
-
-        // ========================================================
-        // MOTOR DE EJECUCIÓN 
-        // ========================================================
-        function executeCSGCode(rawCode) {
-            document.getElementById('loader').style.display = 'block';
+        // Definimos el código del Worker en un string para no requerir archivos externos
+        const workerCode = `
+            importScripts('https://cdn.jsdelivr.net/gh/evanw/csg.js@master/csg.js');
             
-            // Pequeño timeout para permitir que el DOM muestre el loader antes de bloquear el hilo principal
-            setTimeout(() => {
+            // Polyfills inyectados directamente en el núcleo del worker
+            CSG.prototype.translate = function(v) { return this.transform(CSG.Matrix4x4.translation(v)); };
+            CSG.prototype.scale = function(v) { if(typeof v === 'number') v = [v,v,v]; return this.transform(CSG.Matrix4x4.scaling(v)); };
+            CSG.prototype.rotateX = function(deg) { return this.transform(CSG.Matrix4x4.rotationX(deg)); };
+            CSG.prototype.rotateY = function(deg) { return this.transform(CSG.Matrix4x4.rotationY(deg)); };
+            CSG.prototype.rotateZ = function(deg) { return this.transform(CSG.Matrix4x4.rotationZ(deg)); };
+
+            self.onmessage = function(e) {
+                const rawCode = e.data;
                 try {
-                    log("<span class='log-sys'>> Evaluando código CSG en hilo principal...</span>");
-                    if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
-
-                    let fn = new Function(rawCode + "\nreturn main();");
+                    let fn = new Function(rawCode + "\\nreturn main();");
                     let csgResult = fn();
+                    if (!csgResult || typeof csgResult.toPolygons !== 'function') throw new Error("main() no retornó CSG");
 
-                    if (!csgResult || typeof csgResult.toPolygons !== 'function') throw new Error("main() no retornó un objeto CSG.");
+                    // Extraer polígonos y convertir a TypedArrays (súper rápido)
+                    let polys = csgResult.toPolygons();
+                    let numTriangles = 0;
+                    for(let i=0; i<polys.length; i++) numTriangles += (polys[i].vertices.length - 2);
 
-                    let geo = CSGToBufferGeometry(csgResult);
-                    geo.computeBoundingBox();
-                    
-                    currentMesh = new THREE.Mesh(geo, materials[matIndex]);
-                    
-                    const center = new THREE.Vector3();
-                    geo.boundingBox.getCenter(center);
-                    currentMesh.position.sub(center); 
-                    
-                    scene.add(currentMesh);
+                    let vertices = new Float32Array(numTriangles * 9);
+                    let normals = new Float32Array(numTriangles * 9);
+                    let idx = 0;
 
-                    // --- ACTUALIZACIÓN DEL HUD DE GEOMETRÍA ---
-                    const size = new THREE.Vector3();
-                    geo.boundingBox.getSize(size);
-                    
-                    document.getElementById('geo-x').innerText = size.x.toFixed(2) + " mm";
-                    document.getElementById('geo-y').innerText = size.y.toFixed(2) + " mm";
-                    document.getElementById('geo-z').innerText = size.z.toFixed(2) + " mm";
-                    
-                    // Volumen de la Bounding Box (Aproximación cúbica máxima)
-                    const volAprox = size.x * size.y * size.z;
-                    document.getElementById('geo-vol').innerText = Math.round(volAprox) + " mm³";
-                    
-                    document.getElementById('geo-poly').innerText = (geo.attributes.position.count / 3).toString();
-
-                    log("<span class='log-ok'>> Malla WebGL generada correctamente.</span>");
-
-                } catch (err) {
-                    let errMsg = err.message;
-                    if (errMsg.includes("flip")) errMsg += " (Geometría coplanar. Ajusta Tol. Global en la App)";
-                    log("<span class='log-err'>> ERROR: " + errMsg + "</span>");
-                    document.getElementById('console').style.display = 'block';
-                } finally {
-                    document.getElementById('loader').style.display = 'none';
+                    for (let i = 0; i < polys.length; i++) {
+                        let poly = polys[i];
+                        for (let j = 2; j < poly.vertices.length; j++) {
+                            let v0 = poly.vertices[0], v1 = poly.vertices[j - 1], v2 = poly.vertices[j];
+                            vertices[idx] = v0.pos.x; vertices[idx+1] = v0.pos.y; vertices[idx+2] = v0.pos.z;
+                            normals[idx] = v0.normal.x; normals[idx+1] = v0.normal.y; normals[idx+2] = v0.normal.z; idx+=3;
+                            vertices[idx] = v1.pos.x; vertices[idx+1] = v1.pos.y; vertices[idx+2] = v1.pos.z;
+                            normals[idx] = v1.normal.x; normals[idx+1] = v1.normal.y; normals[idx+2] = v1.normal.z; idx+=3;
+                            vertices[idx] = v2.pos.x; vertices[idx+1] = v2.pos.y; vertices[idx+2] = v2.pos.z;
+                            normals[idx] = v2.normal.x; normals[idx+1] = v2.normal.y; normals[idx+2] = v2.normal.z; idx+=3;
+                        }
+                    }
+                    self.postMessage({ success: true, v: vertices, n: normals }, [vertices.buffer, normals.buffer]);
+                } catch(err) {
+                    self.postMessage({ success: false, err: err.message });
                 }
-            }, 50);
+            };
+        `;
+        
+        const blob = new Blob([workerCode], {type: 'application/javascript'});
+        const csgWorker = new Worker(URL.createObjectURL(blob));
+
+        let t0 = 0;
+
+        csgWorker.onmessage = function(e) {
+            document.getElementById('loader').style.display = 'none';
+            const data = e.data;
+            
+            if(data.success) {
+                const geom = new THREE.BufferGeometry();
+                geom.setAttribute('position', new THREE.BufferAttribute(data.v, 3));
+                geom.setAttribute('normal', new THREE.BufferAttribute(data.n, 3));
+                geom.computeBoundingBox();
+                
+                if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+                currentMesh = new THREE.Mesh(geom, materials[matIndex]);
+                
+                const center = new THREE.Vector3(); geom.boundingBox.getCenter(center);
+                currentMesh.position.sub(center); 
+                scene.add(currentMesh);
+
+                // Update HUD
+                const size = new THREE.Vector3(); geom.boundingBox.getSize(size);
+                document.getElementById('geo-x').innerText = size.x.toFixed(2) + " mm";
+                document.getElementById('geo-y').innerText = size.y.toFixed(2) + " mm";
+                document.getElementById('geo-z').innerText = size.z.toFixed(2) + " mm";
+                document.getElementById('geo-poly').innerText = (data.v.length / 3).toString();
+                document.getElementById('geo-time').innerText = Math.round(performance.now() - t0) + " ms";
+                
+                log("<span class='log-ok'>> Render multi-hilo completado. UI 100% responsiva.</span>");
+            } else {
+                let errMsg = data.err;
+                if (errMsg.includes("flip")) errMsg += " (Tol. Global sugerida)";
+                log("<span class='log-err'>> WORKER ERROR: " + errMsg + "</span>");
+                document.getElementById('console').style.display = 'block';
+            }
+        };
+
+        function executeCSGCode(rawCode) {
+            document.getElementById('loader').style.display = 'flex';
+            log("<span class='log-sys'>> Enviando operaciones booleanas al Worker...</span>");
+            t0 = performance.now();
+            csgWorker.postMessage(rawCode); // La UI no se congela aquí, el worker trabaja en la sombra
         }
 
         // ========================================================
-        // POLLING AL SERVIDOR LOCAL (FLET)
+        // 4. API POLLING (FLET)
         // ========================================================
         let lastCode = "";
         function checkServer() {
@@ -309,29 +245,9 @@
                 .then(data => {
                     if (data && data.code_b64 && data.code_b64 !== "") {
                         let decoded = atob(data.code_b64);
-                        if (decoded !== lastCode) {
-                            lastCode = decoded;
-                            executeCSGCode(decoded);
-                        }
+                        if (decoded !== lastCode) { lastCode = decoded; executeCSGCode(decoded); }
                     }
                 }).catch(e => {});
-        }
-
-        function exportSTL() {
-            if(!currentMesh) return;
-            let stl = "solid nexus_export\n";
-            let pos = currentMesh.geometry.attributes.position.array;
-            let nor = currentMesh.geometry.attributes.normal.array;
-            for(let i=0; i<pos.length; i+=9) {
-                stl += "facet normal "+nor[i]+" "+nor[i+1]+" "+nor[i+2]+"\n  outer loop\n";
-                stl += "    vertex "+pos[i]+" "+pos[i+1]+" "+pos[i+2]+"\n    vertex "+pos[i+3]+" "+pos[i+4]+" "+pos[i+5]+"\n    vertex "+pos[i+6]+" "+pos[i+7]+" "+pos[i+8]+"\n  endloop\nendfacet\n";
-            }
-            stl += "endsolid nexus_export\n";
-            let blob = new Blob([stl], {type: 'text/plain'});
-            let a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = "nexus_model.stl";
-            a.click();
         }
 
         window.onload = () => { initWebGL(); setInterval(checkServer, 1000); };
