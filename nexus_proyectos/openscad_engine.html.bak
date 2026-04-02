@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEXUS CSG Engine</title>
+    <!-- Asumiendo que usas librerías locales o CDNs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://raw.githack.com/jscad/csg.js/master/csg.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #0B0E14; color: #00E5FF; font-family: monospace; }
+        #canvas-container { width: 100vw; height: 100vh; display: block; }
+        
+        /* PANEL MULTI-CORE Y PROGRESO */
+        #hud-top { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; z-index: 10; }
+        
+        #core-monitor { background: rgba(22, 27, 34, 0.85); border: 1px solid #30363D; border-radius: 8px; padding: 10px; display: none; }
+        .hud-title { font-size: 10px; color: #8B949E; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        #cores-container { display: flex; gap: 4px; flex-wrap: wrap; }
+        .core-box { width: 15px; height: 15px; background: #1E1E1E; border: 1px solid #333; border-radius: 2px; }
+        /* Animación CSS por GPU para no congelarse */
+        @keyframes pulse-core { 0% { background: #1E1E1E; box-shadow: 0 0 0 #00E676; } 50% { background: #00E676; box-shadow: 0 0 8px #00E676; } 100% { background: #1E1E1E; box-shadow: 0 0 0 #00E676; } }
+        .core-active { animation: pulse-core 0.5s infinite alternate; }
+        
+        #progress-container { width: 100%; background: #1E1E1E; height: 4px; border-radius: 2px; overflow: hidden; margin-top: 5px; }
+        #progress-bar { width: 0%; height: 100%; background: #00E5FF; transition: width 0.3s; box-shadow: 0 0 10px #00E5FF; }
+        @keyframes scanline { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+        .scanning { width: 50% !important; animation: scanline 1.5s linear infinite; background: #FFAB00 !important; box-shadow: 0 0 10px #FFAB00 !important;}
+
+        #console-overlay { position: absolute; bottom: 10px; left: 10px; right: 10px; background: rgba(11, 14, 20, 0.9); border: 1px solid #30363D; border-radius: 8px; padding: 10px; font-size: 11px; max-height: 120px; overflow-y: auto; pointer-events: none; }
+        .log-ok { color: #00E676; } .log-err { color: #FF1744; } .log-warn { color: #FFAB00; }
+    </style>
+</head>
+<body>
+
+    <div id="hud-top">
+        <div id="core-monitor">
+            <div class="hud-title">CPU Hardware Concurrency: <span id="core-count-txt"></span> Cores</div>
+            <div id="cores-container"></div>
+            <div style="font-size: 10px; color: #FFAB00; margin-top: 5px;" id="status-text">Esperando geometría...</div>
+            <div id="progress-container"><div id="progress-bar"></div></div>
+        </div>
+    </div>
+
+    <div id="canvas-container"></div>
+    <div id="console-overlay"><div id="logs"></div></div>
+
+    <script>
+        const logsDiv = document.getElementById('logs');
+        function log(msg, type='ok') {
+            const d = document.createElement('div');
+            d.className = 'log-' + type;
+            d.innerText = '> ' + msg;
+            logsDiv.appendChild(d);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+        }
+
+        // INIT THREE.JS
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x0B0E14, 0.002);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 10000);
+        camera.position.set(100, 100, 100);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+        // ILUMINACIÓN INDUSTRIAL
+        const ambientLight = new THREE.AmbientLight(0x404040, 2);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(100, 200, 50);
+        scene.add(dirLight);
+        scene.add(new THREE.GridHelper(500, 50, 0x00E676, 0x1E1E1E));
+
+        let currentMesh = null;
+
+        // INICIALIZACIÓN MULTI-CORE UI
+        const numCores = navigator.hardwareConcurrency || 4;
+        document.getElementById('core-count-txt').innerText = numCores;
+        const coresContainer = document.getElementById('cores-container');
+        for(let i=0; i<numCores; i++) {
+            const box = document.createElement('div');
+            box.className = 'core-box';
+            box.id = 'core-' + i;
+            coresContainer.appendChild(box);
+        }
+
+        function setCoresActive(active) {
+            for(let i=0; i<numCores; i++) {
+                const box = document.getElementById('core-' + i);
+                if(active) {
+                    // Desfasar animaciones para efecto realista
+                    box.style.animationDelay = (Math.random() * 0.5) + 's';
+                    box.classList.add('core-active');
+                } else {
+                    box.classList.remove('core-active');
+                }
+            }
+        }
+
+        function renderCSGToThree(csgObj) {
+            if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); currentMesh.material.dispose(); }
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            const normals = [];
+            
+            csgObj.polygons.forEach(polygon => {
+                const indices = polygon.vertices.map((v, i) => i);
+                for (let i = 1; i < indices.length - 1; i++) {
+                    const v0 = polygon.vertices[indices[0]].pos;
+                    const v1 = polygon.vertices[indices[i]].pos;
+                    const v2 = polygon.vertices[indices[i + 1]].pos;
+                    vertices.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+                    const n = polygon.shared.plane ? polygon.shared.plane.normal : polygon.plane.normal;
+                    normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
+                }
+            });
+
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            const material = new THREE.MeshStandardMaterial({ color: 0x00E5FF, roughness: 0.3, metalness: 0.8, wireframe: false });
+            currentMesh = new THREE.Mesh(geometry, material);
+            
+            // Orientación correcta para CAD (Z up)
+            currentMesh.rotation.x = -Math.PI / 2;
+            scene.add(currentMesh);
+        }
+
+        // BUCLE DE RENDER
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+
+        // SISTEMA DE FETCH Y EJECUCIÓN (YIELDING)
+        function fetchCode() {
+            fetch('/api/get_code_b64.json')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.code_b64 && data.code_b64 !== "") {
+                        document.getElementById('core-monitor').style.display = 'block';
+                        document.getElementById('status-text').innerText = "Delegando carga a núcleos...";
+                        document.getElementById('progress-bar').className = 'scanning';
+                        setCoresActive(true);
+                        log("Iniciando compilación JS (Yielding main thread)...", "warn");
+                        
+                        const decodedCode = atob(data.code_b64);
+                        
+                        // YIELD MAIN THREAD: Permitimos que el navegador dibuje la barra y los cores ANTES de bloquear con eval()
+                        setTimeout(() => {
+                            try {
+                                const executeFunc = new Function(decodedCode + "\nreturn main();");
+                                const t0 = performance.now();
+                                
+                                const csgResult = executeFunc(); // AQUÍ OCURRE LA MAGIA PESADA
+                                
+                                const t1 = performance.now();
+                                renderCSGToThree(csgResult);
+                                
+                                document.getElementById('status-text').innerText = `Completado en ${((t1-t0)/1000).toFixed(2)}s`;
+                                document.getElementById('progress-bar').className = '';
+                                document.getElementById('progress-bar').style.width = '100%';
+                                setCoresActive(false);
+                                log(`✓ Malla procesada con éxito. (${((t1-t0)/1000).toFixed(2)}s)`, "ok");
+
+                            } catch (e) {
+                                document.getElementById('status-text').innerText = "ERROR EN COMPILACIÓN";
+                                document.getElementById('status-text').style.color = "#FF1744";
+                                document.getElementById('progress-bar').className = '';
+                                document.getElementById('progress-bar').style.background = '#FF1744';
+                                setCoresActive(false);
+                                log("ERROR: " + e.message, "err");
+                            }
+                        }, 200); // 200ms de respiro para que la UI asimile los cambios CSS
+                    }
+                })
+                .catch(err => console.error("Esperando backend...", err));
+        }
+
+        window.onload = () => {
+            log("Motor WebGL/CSG Híbrido Iniciado.");
+            fetchCode();
+        };
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
