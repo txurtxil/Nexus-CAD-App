@@ -95,12 +95,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v17.6 PRO"
+        page.title = "NEXUS CAD v17.7 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v17.6 PRO | Sistema Estable", color="#00E5FF", weight="bold")
+        status = ft.Text("NEXUS v17.7 PRO | Motor Estable", color="#00E5FF", weight="bold")
 
         T_INICIAL = "function main() {\n  var GW = 50; var GL = 50; var GH = 20; var GT = 2;\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -171,7 +171,6 @@ def main(page: ft.Page):
         sl_g_t, r_g_t = create_slider("Grosor (GT)", 0.5, 20, 2, False)
         sl_g_tol, r_g_tol = create_slider("Tol. Global (mm)", 0.0, 1.0, 0.2, False)
 
-        # CORRECCIÓN DE BUG FATAL: Eliminado 'label_style' que crasheaba Flet en Android
         sw_ensamble = ft.Switch(label="Activar Ensamblador", value=False, active_color="#FFAB00")
         def toggle_ensamble(e):
             nonlocal modo_ensamble
@@ -880,46 +879,55 @@ def main(page: ft.Page):
         ], expand=True)
         
         # =========================================================
-        # PESTAÑA DB: GESTOR DE DESCARGAS Y RENOMBRADO (V3)
+        # PESTAÑA DB: GESTOR DE ARCHIVOS Y RENOMBRADO INLINE (V4)
         # =========================================================
         file_list = ft.ListView(expand=True, spacing=10)
         tf_fb_url = ft.TextField(label="URL Firebase Realtime DB (Ej: https://tudb.firebaseio.com)", bgcolor="#161B22", text_size=12)
         
-        rename_tf = ft.TextField(label="Nuevo Nombre (Manten la extensión)")
+        # SISTEMA INLINE (Sustituye a los cuadros de diálogo emergentes)
         current_rename_file = ""
-
-        def close_dialog(dlg):
-            if hasattr(page, 'close'): page.close(dlg)
-            else: dlg.open = False; page.update()
-
-        def open_dialog(dlg):
-            if hasattr(page, 'open'): page.open(dlg)
-            else: page.dialog = dlg; dlg.open = True; page.update()
+        rename_tf = ft.TextField(label="Renombrar Archivo", expand=True, bgcolor="#161B22", text_size=13)
 
         def confirm_rename(e):
             nonlocal current_rename_file
-            if rename_tf.value:
+            if rename_tf.value and current_rename_file:
                 old_path = os.path.join(EXPORT_DIR, current_rename_file)
                 new_path = os.path.join(EXPORT_DIR, rename_tf.value)
+                
                 if not new_path.endswith(os.path.splitext(current_rename_file)[1]):
                     new_path += os.path.splitext(current_rename_file)[1]
-                try: os.rename(old_path, new_path)
-                except Exception as ex: print(ex)
-            close_dialog(rename_dlg)
+                
+                try: 
+                    os.rename(old_path, new_path)
+                    status.value = f"✓ Renombrado a {os.path.basename(new_path)}"
+                    status.color = "#00E676"
+                except Exception as ex: 
+                    status.value = f"❌ Error al renombrar: {str(ex)}"
+                    status.color = "red"
+            
+            rename_panel.visible = False
+            current_rename_file = ""
             update_files()
+            page.update()
 
-        rename_dlg = ft.AlertDialog(
-            title=ft.Text("Renombrar Archivo", color="#00E5FF"),
-            content=rename_tf,
-            actions=[ft.TextButton("Cancelar", on_click=lambda _: close_dialog(rename_dlg)), ft.TextButton("Guardar", on_click=confirm_rename)],
-            bgcolor="#161B22"
+        def cancel_rename(e):
+            rename_panel.visible = False
+            page.update()
+
+        rename_panel = ft.Container(
+            content=ft.Row([
+                rename_tf,
+                ft.ElevatedButton("💾", on_click=confirm_rename, bgcolor="#00E676", color="black"),
+                ft.ElevatedButton("❌", on_click=cancel_rename, bgcolor="#B71C1C", color="white")
+            ]), visible=False, padding=10, bgcolor="#1E1E1E", border_radius=8, border=ft.border.all(1, "#FFAB00")
         )
 
         def open_rename(name):
             nonlocal current_rename_file
             current_rename_file = name
             rename_tf.value = name
-            open_dialog(rename_dlg)
+            rename_panel.visible = True
+            page.update()
 
         def update_files():
             file_list.controls.clear()
@@ -992,7 +1000,9 @@ def main(page: ft.Page):
             tf_fb_url,
             ft.Row([ft.ElevatedButton("⬆️ SUBIR", on_click=sync_cloud, bgcolor="#212121", color="#00E676", expand=True), ft.ElevatedButton("⬇️ BAJAR", on_click=download_cloud, bgcolor="#212121", color="#00B0FF", expand=True)]),
             ft.Divider(color="#30363D"),
-            ft.Text("Modelos Terminados y Proyectos (Dispositivo)", color="#00E5FF", weight="bold"), file_list
+            ft.Text("Modelos Terminados y Proyectos (Dispositivo)", color="#00E5FF", weight="bold"),
+            rename_panel, # <-- PANEL INLINE PARA RENOMBRAR (¡100% libre de Crash!)
+            file_list
         ], expand=True)
 
         main_container = ft.Container(content=view_editor, expand=True)
