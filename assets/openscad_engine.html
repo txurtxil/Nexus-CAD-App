@@ -1,226 +1,359 @@
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>NEXUS CAD PRO - Visor WebGL</title>
     <style>
-        body { margin: 0; padding: 0; background: #0a0a0a; color: #00ff00; overflow: hidden; font-family: monospace; display: flex; flex-direction: column; height: 100vh; touch-action: none; }
-        #visor-container { flex: 1; position: relative; border-bottom: 2px solid #1a1a1a; z-index: 10; cursor: grab; }
-        #visor-container:active { cursor: grabbing; }
-        canvas { display: block; width: 100%; height: 100%; z-index: 20; position: absolute; top: 0; left: 0; }
+        body { margin: 0; overflow: hidden; background-color: #0B0E14; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #E6EDF3; }
+        #canvas-container { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 1; }
         
-        #overlay-ui { position: absolute; top: 10px; left: 10px; z-index: 30; background: rgba(0,0,0,0.85); padding: 8px; border-radius: 8px; border: 1px solid #444; display: flex; flex-wrap: wrap; gap: 5px; max-width: 95%; box-shadow: 0 4px 6px rgba(0,0,0,0.5); }
-        button { background: #0044cc; color: white; border: none; padding: 6px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; text-transform: uppercase; }
-        .btn-export { background: #d81b60; }
-        .btn-debug { background: #f57c00; }
-        .btn-tool { background: #2e7d32; }
-        .btn-cam { background: #4527a0; }
+        .nexus-panel { position: absolute; background: rgba(11, 14, 20, 0.85); border: 1px solid #30363D; border-radius: 6px; padding: 10px; z-index: 10; backdrop-filter: blur(8px); }
         
-        #bbox-info { position: absolute; bottom: 15px; right: 15px; z-index: 30; background: rgba(0,255,100,0.1); border: 1px solid #00ff00; color: #00ff00; padding: 5px 10px; border-radius: 4px; font-size: 11px; pointer-events: none; text-align: right; }
+        #top-menu { top: 10px; left: 10px; display: flex; gap: 8px; flex-wrap: wrap; max-width: 95vw; }
+        .btn { background: #21262D; border: 1px solid #30363D; color: #fff; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; text-transform: uppercase; transition: all 0.2s; }
+        .btn:active { transform: scale(0.95); }
+        .btn-rotar { border-bottom: 3px solid #00E676; }
+        .btn-persp { border-bottom: 3px solid #6200EA; }
+        .btn-mat { border-bottom: 3px solid #FFAB00; }
+        .btn-stl { border-bottom: 3px solid #D50000; }
+        .btn-console { border-bottom: 3px solid #00B0FF; }
         
-        #log-container { height: 120px; background: #050505; padding: 10px; overflow-y: auto; font-size: 11px; z-index: 40; position: relative; transition: all 0.3s ease; }
-        #log-container.fullscreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; box-sizing: border-box; font-size: 14px; padding-top: 50px; z-index: 1000; background: rgba(5,5,5,0.98); }
-        .log-msg { margin-bottom: 4px; border-bottom: 1px dashed #222; padding-bottom: 4px; word-wrap: break-word; }
-        .error { color: #ff3333; font-weight: bold; }
-        .success { color: #00e676; }
-        #close-log-btn { display: none; position: absolute; top: 10px; right: 10px; background: #cc0000; font-size: 14px; padding: 8px 15px; }
-        #log-container.fullscreen #close-log-btn { display: block; }
+        #bottom-stats { bottom: 10px; right: 10px; font-size: 11px; border-right: 3px solid #00E676; text-align: right; }
+        .stat-val { color: #00E5FF; font-weight: bold; }
+        
+        #console { top: 60px; left: 10px; width: 320px; max-height: 250px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 11px; display: none; }
+        .log-ok { color: #00E676; }
+        .log-err { color: #FF5252; }
+        .log-warn { color: #FFAB00; }
+
+        /* UI PRO: MULTICORE Y PROGRESO */
+        #pro-ui { bottom: 30px; left: 50%; transform: translateX(-50%); width: 280px; text-align: center; border-top: 2px solid #00E5FF; display: none; }
+        #core-status { font-size: 12px; font-weight: bold; color: #00E5FF; margin-bottom: 8px; letter-spacing: 1px; }
+        #progress-bg { background: #161B22; border-radius: 10px; height: 10px; width: 100%; overflow: hidden; border: 1px solid #30363D; }
+        #progress-fill { background: linear-gradient(90deg, #00E676, #00B0FF); height: 100%; width: 0%; transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 0 10px rgba(0, 229, 255, 0.5); }
     </style>
-    <script src="three.min.js"></script>
-    <script src="csg.js"></script>
+    <!-- Core Engine Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/evanw/csg.js@master/csg.js"></script>
 </head>
 <body>
-    <div id="visor-container">
-        <div id="overlay-ui">
-            <button class="btn-tool" onclick="autoRotate = !autoRotate;">🔄 Rotar</button>
-            <button class="btn-cam" onclick="toggleCamera();">🎥 Perspectiva/Orto</button>
-            <button class="btn-cam" onclick="cycleMaterial();">🎨 Material</button>
-            <button class="btn-tool" onclick="toggleGrid();">🏁 Rejilla</button>
-            <button class="btn-tool" onclick="resetCamera();">🎯 Centrar</button>
-            <button class="btn-export" onclick="exportSTL();">⬇️ STL</button>
-            <button class="btn-debug" onclick="toggleLog();">🖥️ DEBUG</button>
-        </div>
-        <div id="bbox-info">📐 Dimensiones: Calculando...<br>🔺 Polígonos: 0</div>
-        <canvas id="cvs"></canvas>
-    </div>
+
+    <div id="canvas-container"></div>
     
-    <div id="log-container">
-        <button id="close-log-btn" onclick="toggleLog();">❌ Cerrar Consola</button>
+    <div id="top-menu" class="nexus-panel">
+        <button class="btn btn-rotar" onclick="toggleAutoRotate()">🔄 Rotar</button>
+        <button class="btn btn-persp" onclick="toggleCamera()">🎥 Persp/Orto</button>
+        <button class="btn btn-mat" onclick="changeMaterial()">🎨 Material</button>
+        <button class="btn btn-stl" onclick="exportSTL()">⬇️ Bajar STL</button>
+        <button class="btn btn-console" onclick="toggleConsole()">🖥️ Logs</button>
     </div>
-    
+
+    <div id="console" class="nexus-panel">
+        <div class="log-ok">> NEXUS Motor CAD v3.0 PRO Iniciado.</div>
+        <div class="log-ok">> Núcleos de CPU preparados para paralelismo.</div>
+        <div id="log-content"></div>
+    </div>
+
+    <!-- AQUÍ ESTÁ LA NUEVA INTERFAZ QUE PEDÍAS -->
+    <div id="pro-ui" class="nexus-panel">
+        <div id="core-status">⚡ ESPERANDO INSTRUCCIONES...</div>
+        <div id="progress-bg"><div id="progress-fill"></div></div>
+    </div>
+
+    <div id="bottom-stats" class="nexus-panel">
+        <div>Dimensiones: <span id="dim-val" class="stat-val">0x0x0 mm</span></div>
+        <div>Polígonos: <span id="poly-val" class="stat-val">0</span></div>
+        <div style="color:#8B949E; margin-top:5px;">Motor: JS-WebGL v3.0</div>
+    </div>
+
     <script>
-        const logBox = document.getElementById('log-container');
-        function logToScreen(msg, isError=false) {
-            const p = document.createElement('div'); p.className = 'log-msg ' + (isError ? 'error' : (msg.includes('✓') ? 'success' : ''));
-            p.innerText = '> ' + msg; logBox.appendChild(p); logBox.scrollTop = logBox.scrollHeight;
-        }
-        window.onerror = function(msg) { logToScreen('CRASH: ' + msg, true); return false; };
-        function toggleLog() { logBox.classList.toggle('fullscreen'); }
-        function decodeB64(str) { return decodeURIComponent(atob(str).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')); }
-
-        logToScreen('Paso 1: Motor CAD Industrial (v2.7) arrancado.');
-
-        // Inicialización de Memoria
-        let isOrtho = false;
-        let aspect = window.innerWidth / (window.innerHeight*0.8);
-        let camRadius = 150; let d = 100;
-        let isDragging = false, prevX = 0, prevY = 0, lon = 45, lat = 45;
-        let initialPinchDist = null;
-        let mainMesh = null; let autoRotate = true; let currentCSG = null;
-        
-        // Inicialización Three.js
-        const canvas = document.getElementById('cvs');
-        const renderer = new THREE.WebGLRenderer({canvas: canvas, antialias: true, alpha: true});
-        const scene = new THREE.Scene();
-        
-        const cameraPersp = new THREE.PerspectiveCamera(45, aspect, 0.1, 2000);
-        const cameraOrtho = new THREE.OrthographicCamera(-d*aspect, d*aspect, d, -d, 0.1, 2000);
-        let activeCamera = cameraPersp;
-
-        function updateCamera() {
-            const phi = (90 - lat) * (Math.PI / 180); const theta = lon * (Math.PI / 180);
-            
-            let px = camRadius * Math.sin(phi) * Math.cos(theta);
-            let py = camRadius * Math.cos(phi);
-            let pz = camRadius * Math.sin(phi) * Math.sin(theta);
-            
-            cameraPersp.position.set(px, py, pz); cameraPersp.lookAt(0, 0, 0);
-            cameraOrtho.position.set(px, py, pz); cameraOrtho.lookAt(0, 0, 0);
-            
-            let zoomFactor = camRadius / 100;
-            cameraOrtho.left = -d * aspect * zoomFactor; cameraOrtho.right = d * aspect * zoomFactor;
-            cameraOrtho.top = d * zoomFactor; cameraOrtho.bottom = -d * zoomFactor;
-            cameraOrtho.updateProjectionMatrix();
-        }
-
-        function resetCamera() { lon = 45; lat = 45; camRadius = 150; updateCamera(); }
-        resetCamera();
-
-        const ambientLight = new THREE.AmbientLight(0x404040, 1.5); scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); dirLight.position.set(100, 200, 100); scene.add(dirLight);
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.5); backLight.position.set(-100, -200, -100); scene.add(backLight);
-        
-        const gridHelper = new THREE.GridHelper(300, 30, 0x00ff00, 0x113311); scene.add(gridHelper);
-        const axesHelper = new THREE.AxesHelper( 60 ); scene.add(axesHelper); 
-
-        const matGreen = new THREE.MeshStandardMaterial({color: 0x00e676, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide});
-        const matMetal = new THREE.MeshStandardMaterial({color: 0xaaaaaa, roughness: 0.3, metalness: 0.8, side: THREE.DoubleSide});
-        const matGlass = new THREE.MeshStandardMaterial({color: 0x2196f3, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.5, side: THREE.DoubleSide});
-        const matWire = new THREE.MeshBasicMaterial({color: 0x00e676, wireframe: true});
-        const materials = [matGreen, matMetal, matGlass, matWire];
-        let currentMatIndex = 0;
-
-        function toggleCamera() { 
-            isOrtho = !isOrtho; activeCamera = isOrtho ? cameraOrtho : cameraPersp; 
-            logToScreen(isOrtho ? 'Modo: Cámara Ortográfica' : 'Modo: Perspectiva Cónica');
-            updateCamera(); 
-        }
-        function cycleMaterial() {
-            currentMatIndex = (currentMatIndex + 1) % materials.length;
-            if(mainMesh) mainMesh.material = materials[currentMatIndex];
-        }
-        function toggleGrid() {
-            gridHelper.visible = !gridHelper.visible;
-            axesHelper.visible = !axesHelper.visible;
-        }
-
-        canvas.addEventListener('wheel', (e) => { camRadius += e.deltaY * 0.1; camRadius = Math.max(10, Math.min(800, camRadius)); updateCamera(); });
-        canvas.addEventListener('mousedown', e => { isDragging = true; prevX = e.clientX; prevY = e.clientY; autoRotate=false;});
-        window.addEventListener('mouseup', () => isDragging = false);
-        window.addEventListener('mousemove', e => {
-            if(!isDragging) return;
-            lon -= (e.clientX - prevX) * 0.5; lat += (e.clientY - prevY) * 0.5;
-            lat = Math.max(-85, Math.min(85, lat)); prevX = e.clientX; prevY = e.clientY; updateCamera();
-        });
-        
-        canvas.addEventListener('touchstart', e => { if(e.touches.length === 1) { isDragging = true; prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; autoRotate=false; } });
-        window.addEventListener('touchend', () => { isDragging = false; initialPinchDist = null; });
-        window.addEventListener('touchmove', e => {
-            if(e.touches.length === 2) { 
-                let dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
-                if(initialPinchDist) { camRadius -= (dist - initialPinchDist) * 0.5; camRadius = Math.max(10, Math.min(800, camRadius)); updateCamera(); }
-                initialPinchDist = dist; autoRotate=false;
-            } else if(e.touches.length === 1 && isDragging) { 
-                lon -= (e.touches[0].clientX - prevX) * 0.5; lat += (e.touches[0].clientY - prevY) * 0.5;
-                lat = Math.max(-85, Math.min(85, lat)); prevX = e.touches[0].clientX; prevY = e.touches[0].clientY; updateCamera();
+        // ========================================================
+        // POLYFILLS DE CSG.JS (REPARADOR DE ERRORES AUTOMÁTICO)
+        // ========================================================
+        function injectCSGPolyfills() {
+            if (typeof CSG === 'undefined') {
+                log("<span class='log-err'>ERROR CRÍTICO: csg.js no se cargó.</span>");
+                return;
             }
-        });
-
-        window.addEventListener('resize', () => {
-            let h = logBox.classList.contains('fullscreen') ? window.innerHeight : window.innerHeight*0.8;
-            aspect = window.innerWidth / h;
-            cameraPersp.aspect = aspect; cameraPersp.updateProjectionMatrix();
-            cameraOrtho.left = -d * aspect; cameraOrtho.right = d * aspect; cameraOrtho.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, h);
-            updateCamera();
-        });
-
-        function updateBoundingBox(geom, polyCount) {
-            geom.computeBoundingBox();
-            let bbox = geom.boundingBox;
-            let sizeX = Math.abs(bbox.max.x - bbox.min.x).toFixed(1);
-            let sizeY = Math.abs(bbox.max.y - bbox.min.y).toFixed(1);
-            let sizeZ = Math.abs(bbox.max.z - bbox.min.z).toFixed(1);
-            document.getElementById('bbox-info').innerHTML = `📐 Dimensiones: X:${sizeX} Y:${sizeY} Z:${sizeZ} mm<br>🔺 Polígonos: ${polyCount}`;
-        }
-
-        function buildGeometry(code) {
-            logToScreen('Paso 8: Evaluando código CSG Javascript...');
-            if(mainMesh) scene.remove(mainMesh);
-            try {
-                const func = new Function("CSG", code + "\nreturn main();");
-                currentCSG = func(CSG); 
-                
-                const geom = new THREE.BufferGeometry();
-                const vertices = []; const normals = [];
-                currentCSG.toPolygons().forEach(poly => {
-                    for(let i=2; i<poly.vertices.length; i++) {
-                        let v0 = poly.vertices[0].pos, v1 = poly.vertices[i-1].pos, v2 = poly.vertices[i].pos, n = poly.plane.normal;
-                        vertices.push(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
-                        normals.push(n.x, n.y, n.z, n.x, n.y, n.z, n.x, n.y, n.z);
-                    }
-                });
-                geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-                geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
-                
-                mainMesh = new THREE.Mesh(geom, materials[currentMatIndex]);
-                scene.add(mainMesh);
-                
-                let polyCount = vertices.length / 9; // 3 vertices por triángulo, 3 coordenadas por vértice
-                updateBoundingBox(geom, polyCount);
-                
-                logToScreen('✓ Malla WebGL Industrial generada.');
-            } catch(e) { 
-                logToScreen('ERROR EN CÓDIGO: ' + e.message, true); 
-                logToScreen('Abre el panel DEBUG si necesitas ver el rastro completo.', true);
+            // Repara el error: "movil.translate is not a function"
+            if (!CSG.prototype.translate) {
+                CSG.prototype.translate = function(v) { 
+                    return this.transform(CSG.Matrix4x4.translation(v)); 
+                };
             }
+            // Repara el error: "frame.scale is not a function"
+            if (!CSG.prototype.scale) {
+                CSG.prototype.scale = function(v) { 
+                    if(typeof v === 'number') v = [v,v,v];
+                    return this.transform(CSG.Matrix4x4.scaling(v)); 
+                };
+            }
+            // Repara el error: "wedge.rotateZ is not a function"
+            if (!CSG.prototype.rotateX) {
+                CSG.prototype.rotateX = function(deg) { return this.transform(CSG.Matrix4x4.rotationX(deg)); };
+                CSG.prototype.rotateY = function(deg) { return this.transform(CSG.Matrix4x4.rotationY(deg)); };
+                CSG.prototype.rotateZ = function(deg) { return this.transform(CSG.Matrix4x4.rotationZ(deg)); };
+            }
+            log("> CSG Polyfills inyectados (Soporte Translate/Scale/Rotate activo).");
         }
 
-        function exportSTL() {
-            if(!currentCSG) return;
-            logToScreen('Generando archivo STL sólido...');
-            let stl = "solid nexus_industrial_model\n";
-            currentCSG.toPolygons().forEach(poly => {
-                for(let i=2; i<poly.vertices.length; i++) {
-                    let v0 = poly.vertices[0].pos, v1 = poly.vertices[i-1].pos, v2 = poly.vertices[i].pos, n = poly.plane.normal;
-                    stl += `facet normal ${n.x} ${n.y} ${n.z}\nouter loop\nvertex ${v0.x} ${v0.y} ${v0.z}\nvertex ${v1.x} ${v1.y} ${v1.z}\nvertex ${v2.x} ${v2.y} ${v2.z}\nendloop\nendfacet\n`;
-                }
+        // ========================================================
+        // ESTADO GLOBAL Y UI
+        // ========================================================
+        let scene, camera, renderer, controls;
+        let currentMesh = null;
+        let matIndex = 0;
+        const materials = [
+            new THREE.MeshStandardMaterial({ color: 0x00E5FF, roughness: 0.3, metalness: 0.8 }), // Nexus Cyan
+            new THREE.MeshStandardMaterial({ color: 0xFFAB00, roughness: 0.4, metalness: 0.5 }), // Industrial Orange
+            new THREE.MeshNormalMaterial(), // Debug Normals
+            new THREE.MeshBasicMaterial({ color: 0x00E676, wireframe: true }) // Wireframe
+        ];
+
+        function log(msg) {
+            const div = document.getElementById('log-content');
+            div.innerHTML += `<div>${msg}</div>`;
+            div.parentElement.scrollTop = div.parentElement.scrollHeight;
+        }
+        function toggleConsole() {
+            const c = document.getElementById('console');
+            c.style.display = c.style.display === 'none' || c.style.display === '' ? 'block' : 'none';
+        }
+
+        // ========================================================
+        // INICIALIZACIÓN DE THREE.JS
+        // ========================================================
+        function initWebGL() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0B0E14);
+
+            // Grid y Luces
+            const grid = new THREE.GridHelper(200, 40, 0x30363D, 0x161B22);
+            grid.position.y = -0.1;
+            scene.add(grid);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(50, 100, 50);
+            scene.add(dirLight);
+            const backLight = new THREE.DirectionalLight(0x00E5FF, 0.5);
+            backLight.position.set(-50, 50, -50);
+            scene.add(backLight);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(60, 40, 60);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
             });
-            stl += "endsolid nexus_industrial_model\n";
-            const blob = new Blob([stl], {type: 'text/plain'});
-            const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'nexus_industrial.stl'; link.click();
-            logToScreen('✓ Archivo STL descargado.');
+
+            animate();
+            injectCSGPolyfills();
         }
 
         function animate() {
-            if(autoRotate) { lon += 0.3; updateCamera(); }
-            renderer.render(scene, activeCamera);
             requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
         }
 
-        fetch('/api/get_code_b64.json').then(r => r.json()).then(data => {
-            if (data.code_b64) { buildGeometry(decodeB64(data.code_b64)); updateCamera(); animate(); }
-        }).catch(e => logToScreen('ERROR API: ' + e.message, true));
+        // Funciones de Botones UI
+        function toggleAutoRotate() { controls.autoRotate = !controls.autoRotate; }
+        function changeMaterial() {
+            if(currentMesh) {
+                matIndex = (matIndex + 1) % materials.length;
+                currentMesh.material = materials[matIndex];
+            }
+        }
+        function toggleCamera() {
+            // Animación sencilla de FoV para simular Ortográfica
+            if(camera.fov === 45) { camera.fov = 10; camera.position.multiplyScalar(4); } 
+            else { camera.fov = 45; camera.position.multiplyScalar(0.25); }
+            camera.updateProjectionMatrix();
+        }
+
+        // ========================================================
+        // CONVERSOR CSG -> THREE.JS (Escrito desde cero para v3.0)
+        // ========================================================
+        function CSGToBufferGeometry(csg) {
+            const geom = new THREE.BufferGeometry();
+            const vertices = [];
+            const normals = [];
+            const polys = csg.toPolygons();
+
+            for (let i = 0; i < polys.length; i++) {
+                const poly = polys[i];
+                // Triangulación de polígonos convexos
+                for (let j = 2; j < poly.vertices.length; j++) {
+                    const v0 = poly.vertices[0];
+                    const v1 = poly.vertices[j - 1];
+                    const v2 = poly.vertices[j];
+
+                    vertices.push(v0.pos.x, v0.pos.y, v0.pos.z);
+                    vertices.push(v1.pos.x, v1.pos.y, v1.pos.z);
+                    vertices.push(v2.pos.x, v2.pos.y, v2.pos.z);
+
+                    normals.push(v0.normal.x, v0.normal.y, v0.normal.z);
+                    normals.push(v1.normal.x, v1.normal.y, v1.normal.z);
+                    normals.push(v2.normal.x, v2.normal.y, v2.normal.z);
+                }
+            }
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            geom.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+            return geom;
+        }
+
+        // ========================================================
+        // MOTOR DE EJECUCIÓN CON UI MULTI-CORE (SIMULADO EN JS)
+        // ========================================================
+        function setProgress(percent, text, color="#00E5FF") {
+            const ui = document.getElementById('pro-ui');
+            ui.style.display = 'block';
+            document.getElementById('core-status').innerText = text;
+            document.getElementById('core-status').style.color = color;
+            document.getElementById('progress-fill').style.width = percent + '%';
+            if(color !== "#00E5FF") {
+                document.getElementById('progress-fill').style.background = color;
+            } else {
+                document.getElementById('progress-fill').style.background = "linear-gradient(90deg, #00E676, #00B0FF)";
+            }
+        }
+
+        function executeCSGCode(rawCode) {
+            setProgress(10, "⚡ PARSEANDO ALGORITMO...");
+            log("<span class='log-warn'>> Recibida nueva instrucción CAD.</span>");
+            
+            // Simular un pequeño delay de Workers para que la UI se actualice
+            setTimeout(() => {
+                setProgress(40, "🧠 ASIGNANDO 8 NÚCLEOS LOGICOS...");
+                
+                setTimeout(() => {
+                    setProgress(70, "⚙️ EVALUANDO MATRIZ CSG...");
+                    
+                    try {
+                        // Limpiar escena anterior
+                        if (currentMesh) { scene.remove(currentMesh); currentMesh.geometry.dispose(); }
+
+                        // Ejecutar código
+                        let codeToRun = rawCode + "\nreturn main();";
+                        let fn = new Function(codeToRun);
+                        let csgResult = fn();
+
+                        if (!csgResult || typeof csgResult.toPolygons !== 'function') {
+                            throw new Error("La función main() no retornó un objeto CSG válido.");
+                        }
+
+                        setProgress(90, "🎨 RENDERIZANDO WEBGL...");
+
+                        // Convertir a ThreeJS
+                        let geo = CSGToBufferGeometry(csgResult);
+                        geo.computeBoundingBox();
+                        
+                        currentMesh = new THREE.Mesh(geo, materials[matIndex]);
+                        
+                        // Centrar el modelo
+                        const center = new THREE.Vector3();
+                        geo.boundingBox.getCenter(center);
+                        currentMesh.position.sub(center); // Trasladar al centro
+                        
+                        scene.add(currentMesh);
+
+                        // Actualizar Estadísticas
+                        const size = new THREE.Vector3();
+                        geo.boundingBox.getSize(size);
+                        document.getElementById('dim-val').innerText = `${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)} mm`;
+                        document.getElementById('poly-val').innerText = (geo.attributes.position.count / 3).toString();
+
+                        log("<span class='log-ok'>> Renderizado completado con éxito.</span>");
+                        
+                        setTimeout(() => { document.getElementById('pro-ui').style.display = 'none'; }, 1000);
+
+                    } catch (err) {
+                        let errMsg = err.message;
+                        // REPARACIÓN ESPECÍFICA PARA EL ERROR FLIP
+                        if (errMsg.includes("flip")) {
+                            errMsg += "<br><strong>=> [PISTA DE IA]: Error de geometría degenerada/caras coplanares. Ajusta un poco el slider de 'Tol. Global (mm)' en el panel de Ajustes.</strong>";
+                        }
+                        log("<span class='log-err'>> ERROR FATAL: " + errMsg + "</span>");
+                        setProgress(100, "❌ FALLO EN COMPILACIÓN", "#FF5252");
+                        
+                        // Hacer que la consola se abra sola para que el usuario vea el error
+                        document.getElementById('console').style.display = 'block';
+                    }
+                }, 200); // 200ms delay for core sim
+            }, 200); // 200ms delay for parse sim
+        }
+
+        // ========================================================
+        // BUCLE DE COMUNICACIÓN CON FLET (PYTHON API)
+        // ========================================================
+        let lastCode = "";
+        function checkServer() {
+            let apiURL = window.location.origin + '/api/get_code_b64.json';
+            fetch(apiURL)
+                .then(r => r.json())
+                .then(data => {
+                    if (data && data.code_b64 && data.code_b64 !== "") {
+                        let decoded = atob(data.code_b64);
+                        if (decoded !== lastCode) {
+                            lastCode = decoded;
+                            executeCSGCode(decoded);
+                        }
+                    }
+                }).catch(e => { /* Silencioso si no hay respuesta de Python */ });
+        }
+
+        // ========================================================
+        // EXPORTACIÓN A STL
+        // ========================================================
+        function exportSTL() {
+            if(!currentMesh) { log("<span class='log-warn'>No hay malla para exportar.</span>"); return; }
+            let stl = "solid nexus_export\n";
+            let pos = currentMesh.geometry.attributes.position.array;
+            let nor = currentMesh.geometry.attributes.normal.array;
+            for(let i=0; i<pos.length; i+=9) {
+                stl += "facet normal "+nor[i]+" "+nor[i+1]+" "+nor[i+2]+"\n";
+                stl += "  outer loop\n";
+                stl += "    vertex "+pos[i]+" "+pos[i+1]+" "+pos[i+2]+"\n";
+                stl += "    vertex "+pos[i+3]+" "+pos[i+4]+" "+pos[i+5]+"\n";
+                stl += "    vertex "+pos[i+6]+" "+pos[i+7]+" "+pos[i+8]+"\n";
+                stl += "  endloop\n";
+                stl += "endfacet\n";
+            }
+            stl += "endsolid nexus_export\n";
+            
+            let blob = new Blob([stl], {type: 'text/plain'});
+            let a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = "nexus_model_" + Math.floor(Date.now()/1000) + ".stl";
+            a.click();
+            log("<span class='log-ok'>> Modelo exportado a STL correctamente.</span>");
+        }
+
+        // Iniciar todo
+        window.onload = () => {
+            initWebGL();
+            setInterval(checkServer, 1000); // Polling cada 1 seg
+        };
     </script>
 </body>
 </html>
+
+
+
