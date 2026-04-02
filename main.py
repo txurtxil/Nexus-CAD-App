@@ -56,16 +56,16 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v14.0 (PARADIGM SHIFT)
+# APLICACIÓN PRINCIPAL v14.1 (STABILITY CORE)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v14.0"
+        page.title = "NEXUS CAD v14.1"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v14.0 PRO | Fases 9 y 10 Desplegadas (Topología y Engranajes Avanzados)", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v14.1 PRO | Motor BSP estabilizado. Error 'flip' purgado.", color="#00E676", weight="bold")
 
         def copy_text(text_to_copy):
             try:
@@ -131,7 +131,7 @@ def main(page: ft.Page):
         )
 
         # =========================================================
-        # MOTOR PARAMÉTRICO V14.0 (MATH-CORE STRICT: 29 HERRAMIENTAS)
+        # MOTOR PARAMÉTRICO V14.1 (SIN "NEW CSG()" PARA EVITAR FLIP)
         # =========================================================
         def generate_param_code(e=None):
             h = herramienta_actual
@@ -139,35 +139,36 @@ def main(page: ft.Page):
             
             if h == "custom": pass 
 
-            # ===== FASE 9: TOPOLOGÍA Y VORONOI =====
+            # FIX: PANAL SIN "FRAME.SCALE" Y SIN "NEW CSG()"
             elif h == "panal":
                 w, l, ht, r_hex = sl_pan_x.value, sl_pan_y.value, sl_pan_z.value, sl_pan_r.value
                 code = f"function main() {{\n  var width = {w}; var length = {l}; var h = {ht}; var r_hex = {r_hex};\n"
-                code += f"  var block = CSG.cube({{center:[0,0,h/2], radius:[width/2, length/2, h/2]}});\n"
-                code += f"  var holes = new CSG();\n"
-                code += f"  var wall = 1.5;\n"
-                code += f"  var dx = r_hex * 1.732 + wall; var dy = r_hex * 1.5 + wall;\n"
+                code += f"  var t = 1.5;\n"
+                code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[width/2, length/2, h/2]}});\n"
+                code += f"  var int_box = CSG.cube({{center:[0,0,h/2], radius:[width/2-t, length/2-t, h/2+1]}});\n"
+                code += f"  var frame = ext.subtract(int_box);\n"
+                code += f"  var core_vol = CSG.cube({{center:[0,0,h/2], radius:[width/2-t, length/2-t, h/2]}});\n"
+                code += f"  var holes = null;\n"
+                code += f"  var dx = r_hex * 1.732 + t; var dy = r_hex * 1.5 + t;\n"
                 code += f"  for(var x = -width/2 + r_hex; x < width/2; x += dx) {{\n"
                 code += f"      for(var y = -length/2 + r_hex; y < length/2; y += dy) {{\n"
                 code += f"          var offset = (Math.abs(Math.round(y/dy)) % 2 === 1) ? dx/2 : 0;\n"
                 code += f"          var cx = x + offset;\n"
                 code += f"          if(cx < width/2 - r_hex && cx > -width/2 + r_hex) {{\n"
                 code += f"              var hex = CSG.cylinder({{start:[cx, y, -1], end:[cx, y, h+1], radius:r_hex, slices:6}});\n"
-                code += f"              holes = holes.union(hex);\n"
+                code += f"              if(holes === null) holes = hex; else holes = holes.union(hex);\n"
                 code += f"          }}\n      }}\n  }}\n"
-                code += f"  var outer = CSG.cube({{center:[0,0,h/2], radius:[width/2, length/2, h/2]}});\n"
-                code += f"  var inner = CSG.cube({{center:[0,0,h/2], radius:[width/2-2, length/2-2, h/2+1]}});\n"
-                code += f"  var frame = outer.subtract(inner);\n"
-                code += f"  var core = block.subtract(holes);\n"
-                code += f"  return frame.union(core.subtract(frame.scale([1.1,1.1,1.1])));\n}}"
+                code += f"  if(holes !== null) core_vol = core_vol.subtract(holes);\n"
+                code += f"  return frame.union(core_vol);\n}}"
                 txt_code.value = code
 
+            # FIX: VORONOI REDUCIDO EN RESOLUCIÓN Y SIN "NEW CSG()"
             elif h == "voronoi":
                 ro, ri, ht, density = sl_vor_ro.value, sl_vor_ri.value, sl_vor_h.value, int(sl_vor_d.value)
                 code = f"function main() {{\n  var r_out = {ro}; var r_in = {ri}; var h = {ht}; var d = {density};\n"
                 code += f"  var pipe = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:r_out, slices:32}})\n"
                 code += f"             .subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:r_in, slices:32}}));\n"
-                code += f"  var holes = new CSG();\n"
+                code += f"  var holes = null;\n"
                 code += f"  var z_step = (r_out - r_in) * 2.5;\n"
                 code += f"  var r_esfera = (r_out - r_in) * 1.8;\n"
                 code += f"  var t = 0;\n"
@@ -177,13 +178,13 @@ def main(page: ft.Page):
                 code += f"          var a = (i * Math.PI * 2 / d) + offset_a;\n"
                 code += f"          var cx = Math.cos(a) * (r_out - (r_out-r_in)/2);\n"
                 code += f"          var cy = Math.sin(a) * (r_out - (r_out-r_in)/2);\n"
-                code += f"          var hole = CSG.sphere({{center:[cx, cy, z], radius:r_esfera, resolution:12}});\n"
-                code += f"          holes = holes.union(hole);\n"
+                code += f"          var hole = CSG.sphere({{center:[cx, cy, z], radius:r_esfera, resolution:8}});\n"
+                code += f"          if(holes === null) holes = hole; else holes = holes.union(hole);\n"
                 code += f"      }}\n      t++;\n  }}\n"
-                code += f"  return pipe.subtract(holes);\n}}"
+                code += f"  if(holes !== null) return pipe.subtract(holes);\n"
+                code += f"  return pipe;\n}}"
                 txt_code.value = code
 
-            # ===== FASE 10: ENGRANAJES EVOLVENTE, CREMALLERA Y CÓNICO =====
             elif h == "evolvente":
                 dientes, mod, ht = int(sl_evo_d.value), sl_evo_m.value, sl_evo_h.value
                 code = f"function main() {{\n  var dientes = {dientes}; var m = {mod}; var h = {ht};\n"
@@ -223,16 +224,16 @@ def main(page: ft.Page):
             elif h == "conico":
                 dientes, r_base, r_top, ht = int(sl_con_d.value), sl_con_rb.value, sl_con_rt.value, sl_con_h.value
                 code = f"function main() {{\n  var dientes = {dientes}; var rb = {r_base}; var rt = {r_top}; var h = {ht};\n"
-                code += f"  var res = 20; // Slices en Z\n"
+                code += f"  var res = 20;\n"
                 code += f"  var dz = h / res;\n"
-                code += f"  var gear = new CSG();\n"
-                code += f"  var m = rb / (dientes/2); // Pseudo-modulo\n"
+                code += f"  var gear = null;\n"
+                code += f"  var m = rb / (dientes/2);\n"
                 code += f"  for(var z=0; z<res; z++) {{\n"
                 code += f"      var z_pos = z * dz;\n"
                 code += f"      var r_curr = rb - (rb - rt)*(z/res);\n"
                 code += f"      var r_root = Math.max(0.1, r_curr - m);\n"
                 code += f"      var core = CSG.cylinder({{start:[0,0,z_pos], end:[0,0,z_pos+dz], radius:r_root, slices:32}});\n"
-                code += f"      gear = gear.union(core);\n"
+                code += f"      if(gear === null) gear = core; else gear = gear.union(core);\n"
                 code += f"      var t_w = (Math.PI * r_curr / dientes) * 0.8;\n"
                 code += f"      for(var i=0; i<dientes; i++) {{\n"
                 code += f"          var a = (i * Math.PI * 2) / dientes;\n"
@@ -242,17 +243,18 @@ def main(page: ft.Page):
                 code += f"          var t2 = CSG.cylinder({{start:[cx2,cy2,z_pos], end:[cx2,cy2,z_pos+dz], radius:t_w*0.3, slices:8}});\n"
                 code += f"          gear = gear.union(t1).union(t2);\n      }}\n  }}\n"
                 code += f"  var hole = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius: rt * 0.3, slices:16}});\n"
-                code += f"  return gear.subtract(hole);\n}}"
+                code += f"  if(gear !== null) return gear.subtract(hole);\n"
+                code += f"  return CSG.cube({{center:[0,0,0], radius:[1,1,1]}});\n}}"
                 txt_code.value = code
 
-            # ===== HERRAMIENTAS MANTENIDAS (Fases 1-8) =====
+            # FIX GENERAL: TODAS LAS DEMÁS FUNCIONES SIN "NEW CSG()"
             elif h == "multicaja":
                 w, l, ht, tol_tapa, sep = sl_mc_x.value, sl_mc_y.value, sl_mc_z.value, sl_mc_tol.value, sl_mc_sep.value
                 code = f"function main() {{\n  var w = {w}; var l = {l}; var h = {ht}; var tol = {tol_tapa}; var sep = {sep};\n"
                 code += f"  var t = 2;\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[w/2, l/2, h/2]}});\n"
-                code += f"  var int = CSG.cube({{center:[0,0,h/2+t], radius:[w/2-t, l/2-t, h/2]}});\n"
-                code += f"  var caja = ext.subtract(int);\n"
+                code += f"  var int_box = CSG.cube({{center:[0,0,h/2+t], radius:[w/2-t, l/2-t, h/2]}});\n"
+                code += f"  var caja = ext.subtract(int_box);\n"
                 code += f"  var offsetZ = h + sep;\n"
                 code += f"  var tapa_b = CSG.cube({{center:[0,0, offsetZ + t/2], radius:[w/2, l/2, t/2]}});\n"
                 code += f"  var tapa_i = CSG.cube({{center:[0,0, offsetZ - t/2], radius:[w/2-t-tol, l/2-t-tol, t/2]}});\n"
@@ -279,19 +281,19 @@ def main(page: ft.Page):
                 ht, r1, r2, grosor = sl_rev_h.value, sl_rev_r1.value, sl_rev_r2.value, sl_rev_g.value
                 code = f"function main() {{\n  var h = {ht}; var r1 = {r1}; var r2 = {r2}; var grosor = {grosor};\n"
                 code += f"  var res = 60;\n  var dz = h / res;\n"
-                code += f"  var solido = new CSG();\n  var hueco = new CSG();\n"
+                code += f"  var solido = null; var hueco = null;\n"
                 code += f"  for(var i=0; i<res; i++) {{\n"
                 code += f"      var z = i * dz;\n"
                 code += f"      var f = Math.sin((z/h) * Math.PI);\n"
                 code += f"      var rad = r1 + (r2 - r1)*(z/h) + (f * 15);\n"
                 code += f"      var capa = CSG.cylinder({{start:[0,0,z], end:[0,0,z+dz], radius:rad, slices:32}});\n"
-                code += f"      solido = solido.union(capa);\n"
+                code += f"      if(solido === null) solido = capa; else solido = solido.union(capa);\n"
                 code += f"      if (grosor > 0 && z > grosor) {{\n"
                 code += f"         var r_int = Math.max(0.1, rad - grosor);\n"
                 code += f"         var capa_h = CSG.cylinder({{start:[0,0,z], end:[0,0,z+dz+0.1], radius:r_int, slices:32}});\n"
-                code += f"         hueco = hueco.union(capa_h);\n"
+                code += f"         if(hueco === null) hueco = capa_h; else hueco = hueco.union(capa_h);\n"
                 code += f"      }}\n  }}\n"
-                code += f"  if(grosor > 0) solido = solido.subtract(hueco);\n"
+                code += f"  if(grosor > 0 && hueco !== null) solido = solido.subtract(hueco);\n"
                 code += f"  return solido;\n}}"
                 txt_code.value = code
 
@@ -300,7 +302,7 @@ def main(page: ft.Page):
                 code = f"function main() {{\n  var pieza = CSG.cube({{center:[0,0,{sl_c_z.value/2}], radius:[{sl_c_x.value/2}, {sl_c_y.value/2}, {sl_c_z.value/2}]}});\n"
                 if g > 0:
                     g = min(g, min(sl_c_x.value, sl_c_y.value) / 2.1)
-                    code += f"  var int = CSG.cube({{center:[0,0,{sl_c_z.value/2 + g}], radius:[{sl_c_x.value/2 - g}, {sl_c_y.value/2 - g}, {sl_c_z.value/2}]}});\n  pieza = pieza.subtract(int);\n"
+                    code += f"  var int_box = CSG.cube({{center:[0,0,{sl_c_z.value/2 + g}], radius:[{sl_c_x.value/2 - g}, {sl_c_y.value/2 - g}, {sl_c_z.value/2}]}});\n  pieza = pieza.subtract(int_box);\n"
                 code += f"  return pieza;\n}}"
                 txt_code.value = code
 
@@ -309,7 +311,7 @@ def main(page: ft.Page):
                 c = int(sl_p_lados.value)
                 code = f"function main() {{\n  var pieza = CSG.cylinder({{start:[0,0,0], end:[0,0,{sl_p_h.value}], radius:{sl_p_rext.value}, slices:{c}}});\n"
                 if rint > 0:
-                    code += f"  var int = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_p_h.value+2}], radius:{rint}, slices:{c}}});\n  pieza = pieza.subtract(int);\n"
+                    code += f"  var int_cyl = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_p_h.value+2}], radius:{rint}, slices:{c}}});\n  pieza = pieza.subtract(int_cyl);\n"
                 code += f"  return pieza;\n}}"
                 txt_code.value = code
             
@@ -392,7 +394,7 @@ def main(page: ft.Page):
                 code += f"      var diente = CSG.cylinder({{start:[Math.cos(a)*r_sol, Math.sin(a)*r_sol, 0], end:[Math.cos(a)*r_sol, Math.sin(a)*r_sol, h], radius:1.2, slices:12}});\n"
                 code += f"      sol = sol.union(diente);\n  }}\n"
                 code += f"  sol = sol.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:3, slices:16}}));\n"
-                code += f"  var planetas = new CSG();\n"
+                code += f"  var planetas = null;\n"
                 code += f"  var dientes_planeta = Math.floor(r_planeta * 1.5);\n"
                 code += f"  for(var p=0; p<3; p++) {{\n"
                 code += f"      var ap = (p * Math.PI * 2) / 3;\n"
@@ -402,21 +404,23 @@ def main(page: ft.Page):
                 code += f"          var a = (i * Math.PI * 2) / dientes_planeta;\n"
                 code += f"          var px = cx + Math.cos(a)*(r_planeta - g_tol);\n"
                 code += f"          var py = cy + Math.sin(a)*(r_planeta - g_tol);\n"
-                code += f"          var diente = CSG.cylinder({{start:[px, py, 0], end:[px, py, h], radius:1.2 - (g_tol/2), slices:12}});\n"
-                code += f"          planeta = planeta.union(diente);\n      }}\n"
+                code += f"          var diente_p = CSG.cylinder({{start:[px, py, 0], end:[px, py, h], radius:1.2 - (g_tol/2), slices:12}});\n"
+                code += f"          planeta = planeta.union(diente_p);\n      }}\n"
                 code += f"      planeta = planeta.subtract(CSG.cylinder({{start:[cx, cy, -1], end:[cx, cy, h+1], radius:2, slices:12}}));\n"
-                code += f"      planetas = planetas.union(planeta);\n  }}\n"
+                code += f"      if(planetas === null) planetas = planeta; else planetas = planetas.union(planeta);\n  }}\n"
                 code += f"  var corona = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:r_anillo + 5, slices:64}});\n"
                 code += f"  var hueco = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:r_anillo + g_tol, slices:64}});\n"
                 code += f"  corona = corona.subtract(hueco);\n"
                 code += f"  var dientes_corona = Math.floor(r_anillo * 1.5);\n"
-                code += f"  var anillo_dientes = new CSG();\n"
+                code += f"  var anillo_dientes = null;\n"
                 code += f"  for(var i=0; i<dientes_corona; i++) {{\n"
                 code += f"      var a = (i * Math.PI * 2) / dientes_corona;\n"
-                code += f"      var diente = CSG.cylinder({{start:[Math.cos(a)*(r_anillo + g_tol), Math.sin(a)*(r_anillo + g_tol), 0], end:[Math.cos(a)*(r_anillo + g_tol), Math.sin(a)*(r_anillo + g_tol), h], radius:1.2, slices:12}});\n"
-                code += f"      anillo_dientes = anillo_dientes.union(diente);\n  }}\n"
-                code += f"  corona = corona.union(anillo_dientes);\n"
-                code += f"  return sol.union(planetas).union(corona);\n}}"
+                code += f"      var diente_c = CSG.cylinder({{start:[Math.cos(a)*(r_anillo + g_tol), Math.sin(a)*(r_anillo + g_tol), 0], end:[Math.cos(a)*(r_anillo + g_tol), Math.sin(a)*(r_anillo + g_tol), h], radius:1.2, slices:12}});\n"
+                code += f"      if(anillo_dientes === null) anillo_dientes = diente_c; else anillo_dientes = anillo_dientes.union(diente_c);\n  }}\n"
+                code += f"  if(anillo_dientes !== null) corona = corona.union(anillo_dientes);\n"
+                code += f"  var obj = sol.union(corona);\n"
+                code += f"  if(planetas !== null) obj = obj.union(planetas);\n"
+                code += f"  return obj;\n}}"
                 txt_code.value = code
 
             elif h == "polea":
@@ -424,12 +428,12 @@ def main(page: ft.Page):
                 code = f"function main() {{\n  var dientes = {dientes}; var ancho = {ancho}; var r_eje = {d_eje/2}; var g_tol = {tol_global};\n"
                 code += f"  var pitch = 2; var r_primitivo = (dientes * pitch) / (2 * Math.PI); var r_ext = r_primitivo - 0.25;\n"
                 code += f"  var cuerpo = CSG.cylinder({{start:[0,0,1.5], end:[0,0,1.5+ancho], radius:r_ext, slices:64}});\n"
-                code += f"  var matriz_dientes = new CSG();\n"
+                code += f"  var matriz_dientes = null;\n"
                 code += f"  for(var i=0; i<dientes; i++) {{\n"
                 code += f"      var a = (i * Math.PI * 2) / dientes;\n"
                 code += f"      var d = CSG.cylinder({{start:[Math.cos(a)*r_ext, Math.sin(a)*r_ext, 1], end:[Math.cos(a)*r_ext, Math.sin(a)*r_ext, 2+ancho], radius:0.55, slices:8}});\n"
-                code += f"      matriz_dientes = matriz_dientes.union(d);\n  }}\n"
-                code += f"  cuerpo = cuerpo.subtract(matriz_dientes);\n"
+                code += f"      if(matriz_dientes === null) matriz_dientes = d; else matriz_dientes = matriz_dientes.union(d);\n  }}\n"
+                code += f"  if(matriz_dientes !== null) cuerpo = cuerpo.subtract(matriz_dientes);\n"
                 code += f"  var base = CSG.cylinder({{start:[0,0,0], end:[0,0,1.5], radius:r_ext + 1, slices:64}});\n"
                 code += f"  var tapa = CSG.cylinder({{start:[0,0,1.5+ancho], end:[0,0,3+ancho], radius:r_ext + 1, slices:64}});\n"
                 code += f"  var polea = base.union(cuerpo).union(tapa);\n"
@@ -442,15 +446,16 @@ def main(page: ft.Page):
                 code = f"function main() {{\n  var rad = {rad}; var n = {n_aspas}; var pitch = {pitch}; var g_tol = {tol_global};\n"
                 code += f"  var hub = CSG.cylinder({{start:[0,0,0], end:[0,0,10], radius:8, slices:32}});\n"
                 code += f"  var agujero = CSG.cylinder({{start:[0,0,-1], end:[0,0,11], radius:2.5 + g_tol, slices:16}});\n"
-                code += f"  var aspas = new CSG();\n"
+                code += f"  var aspas = null;\n"
                 code += f"  for(var i=0; i<n; i++) {{\n    var a = (i * Math.PI * 2) / n;\n"
                 code += f"    var dx = Math.cos(a); var dy = Math.sin(a);\n"
                 code += f"    var aspa = CSG.cylinder({{\n"
                 code += f"        start: [6*dx, 6*dy, 5 - (pitch/10)],\n"
                 code += f"        end: [rad*dx, rad*dy, 5 + (pitch/10)],\n"
                 code += f"        radius: 3, slices: 4\n    }});\n"
-                code += f"    aspas = aspas.union(aspa);\n  }}\n"
-                code += f"  return hub.union(aspas).subtract(agujero);\n}}"
+                code += f"    if(aspas === null) aspas = aspa; else aspas = aspas.union(aspa);\n  }}\n"
+                code += f"  if(aspas !== null) hub = hub.union(aspas);\n"
+                code += f"  return hub.subtract(agujero);\n}}"
                 txt_code.value = code
 
             elif h == "texto":
@@ -459,7 +464,7 @@ def main(page: ft.Page):
                 code = f"""function main() {{
   var texto = "{txt_input}"; var grosor = {th};
   var font = {{ 'A':[14,17,31,17,17], 'B':[30,17,30,17,30], 'C':[14,17,16,17,14], 'D':[30,17,17,17,30], 'E':[31,16,30,16,31], 'F':[31,16,30,16,16], 'G':[14,17,23,17,14], 'H':[17,17,31,17,17], 'I':[14,4,4,4,14], 'J':[7,2,2,18,12], 'K':[17,18,28,18,17], 'L':[16,16,16,16,31], 'M':[17,27,21,17,17], 'N':[17,25,21,19,17], 'O':[14,17,17,17,14], 'P':[30,17,30,16,16], 'Q':[14,17,21,18,13], 'R':[30,17,30,18,17], 'S':[14,16,14,1,14], 'T':[31,4,4,4,4], 'U':[17,17,17,17,14], 'V':[17,17,17,10,4], 'W':[17,17,21,27,17], 'X':[17,10,4,10,17], 'Y':[17,10,4,4,4], 'Z':[31,2,4,8,31], ' ':[0,0,0,0,0], '0':[14,17,17,17,14], '1':[4,12,4,4,14], '2':[14,1,14,16,31], '3':[14,1,14,1,14], '4':[18,18,31,2,2], '5':[31,16,14,1,14], '6':[14,16,30,17,14], '7':[31,1,2,4,8], '8':[14,17,14,17,14], '9':[14,17,15,1,14] }};
-  var piezaText = new CSG(); var voxelSize = 2; 
+  var piezaText = null; var voxelSize = 2; 
   for(var i=0; i<texto.length; i++) {{
     var charMatrix = font[texto[i]] || font[' '];
     var offsetX = i * (6 * voxelSize); 
@@ -469,13 +474,14 @@ def main(page: ft.Page):
         if ((rowVal >> (4 - col)) & 1) {{
            var x = offsetX + (col * voxelSize); var y = ( (4-fila) * voxelSize); 
            var voxel = CSG.cube({{center:[x, y, grosor/2], radius:[voxelSize/2, voxelSize/2, grosor/2]}});
-           piezaText = piezaText.union(voxel);
+           if(piezaText === null) piezaText = voxel; else piezaText = piezaText.union(voxel);
         }}
       }}
     }}
   }}
   var largoBase = texto.length * (6 * voxelSize);
   var base = CSG.cube({{center:[(largoBase/2)-voxelSize, 4, -1], radius:[largoBase/2, 6, 1]}});
+  if(piezaText === null) return base;
   return piezaText.union(base);
 }}"""
                 txt_code.value = code
@@ -484,9 +490,9 @@ def main(page: ft.Page):
                 diam, grosor, ancho = sl_clamp_d.value, sl_clamp_g.value, sl_clamp_w.value
                 code = f"function main() {{\n  var diam = {diam}; var grosor = {grosor}; var ancho = {ancho}; var g_tol = {tol_global};\n"
                 code += f"  var ext = CSG.cylinder({{start:[0,0,0], end:[0,0,ancho], radius:(diam/2)+grosor, slices:64}});\n"
-                code += f"  var int = CSG.cylinder({{start:[0,0,-1], end:[0,0,ancho+1], radius:diam/2 + g_tol, slices:64}});\n"
+                code += f"  var int_cyl = CSG.cylinder({{start:[0,0,-1], end:[0,0,ancho+1], radius:diam/2 + g_tol, slices:64}});\n"
                 code += f"  var corteInf = CSG.cube({{center:[0, -50, ancho/2], radius:[50, 50, ancho]}});\n"
-                code += f"  var arco = ext.subtract(int).subtract(corteInf);\n"
+                code += f"  var arco = ext.subtract(int_cyl).subtract(corteInf);\n"
                 code += f"  var distPestana = (diam/2) + grosor + 5;\n"
                 code += f"  var pestana = CSG.cube({{center:[ distPestana, grosor/2, ancho/2 ], radius:[7.5, grosor/2, ancho/2]}});\n"
                 code += f"  var pestana2 = CSG.cube({{center:[ -distPestana, grosor/2, ancho/2 ], radius:[7.5, grosor/2, ancho/2]}});\n"
@@ -523,8 +529,8 @@ def main(page: ft.Page):
                 px, py, ht, t = sl_pcb_x.value, sl_pcb_y.value, sl_pcb_h.value, sl_pcb_t.value
                 code = f"function main() {{\n  var px = {px}; var py = {py}; var h = {ht}; var t = {t}; var g_tol = {tol_global};\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[px/2 + t, py/2 + t, h/2]}});\n"
-                code += f"  var int = CSG.cube({{center:[0,0,h/2 + t], radius:[px/2, py/2, h/2]}});\n"
-                code += f"  var pieza = ext.subtract(int);\n"
+                code += f"  var int_box = CSG.cube({{center:[0,0,h/2 + t], radius:[px/2, py/2, h/2]}});\n"
+                code += f"  var pieza = ext.subtract(int_box);\n"
                 code += f"  var dx = px/2 - 3.5; var dy = py/2 - 3.5;\n"
                 code += f"  var m = [[1,1], [1,-1], [-1,1], [-1,-1]];\n"
                 code += f"  for(var i=0; i<4; i++) {{\n"
@@ -550,8 +556,8 @@ def main(page: ft.Page):
                 w, l, ht, t = sl_car_x.value, sl_car_y.value, sl_car_z.value, sl_car_t.value
                 code = f"function main() {{\n  var w = {w}; var l = {l}; var h = {ht}; var t = {t}; var g_tol = {tol_global};\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[w/2, l/2, h/2]}});\n"
-                code += f"  var int = CSG.cube({{center:[0,0,(h/2)+t], radius:[(w/2)-t, (l/2)-t, h/2]}});\n"
-                code += f"  var base = ext.subtract(int);\n"
+                code += f"  var int_box = CSG.cube({{center:[0,0,(h/2)+t], radius:[(w/2)-t, (l/2)-t, h/2]}});\n"
+                code += f"  var base = ext.subtract(int_box);\n"
                 code += f"  var r_post = 3.5; var r_hole = 1.5; var h_post = 6;\n"
                 code += f"  var m = [[1,1], [1,-1], [-1,1], [-1,-1]];\n"
                 code += f"  for(var i=0; i<4; i++) {{\n"
@@ -560,18 +566,20 @@ def main(page: ft.Page):
                 code += f"      var post = CSG.cylinder({{start:[px,py,t], end:[px,py,t+h_post], radius:r_post, slices:16}});\n"
                 code += f"      var hole = CSG.cylinder({{start:[px,py,t], end:[px,py,t+h_post+1], radius:r_hole + (g_tol/2), slices:16}});\n"
                 code += f"      base = base.union(post).subtract(hole);\n  }}\n"
-                code += f"  var vents = new CSG();\n"
+                code += f"  var vents = null;\n"
                 code += f"  for(var vx=-(w/2)+15; vx < (w/2)-15; vx += 7) {{\n"
                 code += f"      for(var vy=-(l/2)+15; vy < (l/2)-15; vy += 7) {{\n"
                 code += f"          var agujero = CSG.cylinder({{start:[vx,vy,-1], end:[vx,vy,t+1], radius:2, slices:8}});\n"
-                code += f"          vents = vents.union(agujero);\n"
-                code += f"      }}\n  }}\n  return base.subtract(vents);\n}}"
+                code += f"          if(vents === null) vents = agujero; else vents = vents.union(agujero);\n"
+                code += f"      }}\n  }}\n"
+                code += f"  if(vents !== null) base = base.subtract(vents);\n"
+                code += f"  return base;\n}}"
                 txt_code.value = code
 
             elif h == "muelle":
                 r_res = sl_mue_r.value; r_hilo = sl_mue_h.value; vueltas = sl_mue_v.value; alt = sl_mue_alt.value
                 code = f"function main() {{\n  var r_res = {r_res}; var r_hilo = {r_hilo}; var h = {alt}; var vueltas = {vueltas};\n"
-                code += f"  var resorte = new CSG();\n"
+                code += f"  var resorte = null;\n"
                 code += f"  var pasos = Math.floor(vueltas * 24);\n"
                 code += f"  var paso_z = h / pasos; var a_step = (Math.PI * 2 * vueltas) / pasos;\n"
                 code += f"  for(var i=0; i<pasos; i++) {{\n"
@@ -580,7 +588,7 @@ def main(page: ft.Page):
                 code += f"      var x2 = Math.cos(a2)*r_res; var y2 = Math.sin(a2)*r_res; var z2 = (i+1)*paso_z;\n"
                 code += f"      var seg = CSG.cylinder({{start:[x1,y1,z1], end:[x2,y2,z2], radius:r_hilo, slices:8}});\n"
                 code += f"      var esp = CSG.sphere({{center:[x2,y2,z2], radius:r_hilo, resolution:8}});\n"
-                code += f"      resorte = resorte.union(seg).union(esp);\n  }}\n  return resorte;\n}}"
+                code += f"      if(resorte === null) resorte = seg.union(esp); else resorte = resorte.union(seg).union(esp);\n  }}\n  return resorte;\n}}"
                 txt_code.value = code
 
             elif h == "acme":
@@ -588,7 +596,7 @@ def main(page: ft.Page):
                 code = f"function main() {{\n  var r = {d/2}; var pitch = {pitch}; var len = {length};\n"
                 code += f"  var r_core = r - (pitch * 0.4);\n"
                 code += f"  var eje = CSG.cylinder({{start:[0,0,0], end:[0,0,len], radius:r_core, slices:32}});\n"
-                code += f"  var thread = new CSG();\n"
+                code += f"  var thread = null;\n"
                 code += f"  var steps = Math.floor((len / pitch) * 24);\n"
                 code += f"  var z_step = len / steps; var a_step = (Math.PI * 2 * (len/pitch)) / steps;\n"
                 code += f"  var w = pitch * 0.35;\n"
@@ -596,13 +604,14 @@ def main(page: ft.Page):
                 code += f"      var a1 = i * a_step; var a2 = (i+1) * a_step;\n"
                 code += f"      var z1 = i * z_step; var z2 = (i+1) * z_step;\n"
                 code += f"      var seg = CSG.cylinder({{start:[Math.cos(a1)*r, Math.sin(a1)*r, z1], end:[Math.cos(a2)*r, Math.sin(a2)*r, z2], radius:w, slices:8}});\n"
-                code += f"      thread = thread.union(seg);\n  }}\n  return eje.union(thread);\n}}"
+                code += f"      if(thread === null) thread = seg; else thread = thread.union(seg);\n  }}\n"
+                code += f"  if(thread !== null) eje = eje.union(thread);\n  return eje;\n}}"
                 txt_code.value = code
 
             elif h == "codo":
                 rt = sl_codo_r.value; rc = sl_codo_c.value; ang = sl_codo_a.value; gro = sl_codo_g.value
                 code = f"function main() {{\n  var r_tubo = {rt}; var r_curva = {rc}; var angulo = {ang}; var grosor = {gro};\n"
-                code += f"  var codo = new CSG();\n"
+                code += f"  var codo = null;\n"
                 code += f"  var pasos = Math.max(8, Math.floor(angulo / 5));\n"
                 code += f"  for(var i=0; i<pasos; i++) {{\n"
                 code += f"      var a1 = (i * (angulo/pasos)) * Math.PI / 180;\n"
@@ -611,24 +620,27 @@ def main(page: ft.Page):
                 code += f"      var x2 = Math.cos(a2)*r_curva; var y2 = Math.sin(a2)*r_curva;\n"
                 code += f"      var ext = CSG.cylinder({{start:[x1,y1,0], end:[x2,y2,0], radius:r_tubo, slices:16}});\n"
                 code += f"      var esf = CSG.sphere({{center:[x2,y2,0], radius:r_tubo, resolution:16}});\n"
-                code += f"      codo = codo.union(ext).union(esf);\n  }}\n"
+                code += f"      var sol = ext.union(esf);\n"
+                code += f"      if(codo === null) codo = sol; else codo = codo.union(sol);\n  }}\n"
                 code += f"  if(grosor > 0) {{\n"
-                code += f"     var hueco = new CSG();\n"
+                code += f"     var hueco = null;\n"
                 code += f"     for(var i=0; i<pasos; i++) {{\n"
                 code += f"         var a1 = (i * (angulo/pasos)) * Math.PI / 180;\n"
                 code += f"         var a2 = ((i+1) * (angulo/pasos)) * Math.PI / 180;\n"
                 code += f"         var x1 = Math.cos(a1)*r_curva; var y1 = Math.sin(a1)*r_curva;\n"
                 code += f"         var x2 = Math.cos(a2)*r_curva; var y2 = Math.sin(a2)*r_curva;\n"
-                code += f"         var int = CSG.cylinder({{start:[x1,y1,0], end:[x2,y2,0], radius:r_tubo-grosor, slices:12}});\n"
+                code += f"         var int_c = CSG.cylinder({{start:[x1,y1,0], end:[x2,y2,0], radius:r_tubo-grosor, slices:12}});\n"
                 code += f"         var isf = CSG.sphere({{center:[x2,y2,0], radius:r_tubo-grosor, resolution:12}});\n"
-                code += f"         hueco = hueco.union(int).union(isf);\n     }}\n"
-                code += f"     codo = codo.subtract(hueco);\n  }}\n  return codo;\n}}"
+                code += f"         var hol = int_c.union(isf);\n"
+                code += f"         if(hueco === null) hueco = hol; else hueco = hueco.union(hol);\n"
+                code += f"     }}\n"
+                code += f"     if(hueco !== null) codo = codo.subtract(hueco);\n  }}\n  return codo;\n}}"
                 txt_code.value = code
 
             elif h == "naca":
                 cuerda, grosor, envergadura = sl_naca_c.value, sl_naca_g.value, sl_naca_e.value
                 code = f"function main() {{\n  var cuerda = {cuerda}; var grosor = {grosor}; var envergadura = {envergadura};\n"
-                code += f"  var ala = new CSG();\n"
+                code += f"  var ala = null;\n"
                 code += f"  var num_pasos = 40;\n"
                 code += f"  for(var i=0; i<=num_pasos; i++) {{\n"
                 code += f"      var x = i/num_pasos;\n"
@@ -636,7 +648,7 @@ def main(page: ft.Page):
                 code += f"      var x_real = x * cuerda;\n"
                 code += f"      var yt_real = Math.max(yt * cuerda, 0.1);\n"
                 code += f"      var cyl = CSG.cylinder({{start:[x_real, 0, 0], end:[x_real, 0, envergadura], radius: yt_real, slices: 16}});\n"
-                code += f"      ala = ala.union(cyl);\n  }}\n  return ala;\n}}"
+                code += f"      if(ala === null) ala = cyl; else ala = ala.union(cyl);\n  }}\n  return ala;\n}}"
                 txt_code.value = code
 
             txt_code.update()
@@ -653,7 +665,6 @@ def main(page: ft.Page):
             ], scroll="auto")
         ], visible=True)
 
-        # FASE 9: TOPOLOGÍA Y VORONOI
         sl_pan_x, r_pan_x = create_slider("Ancho X", 20, 200, 80, False, generate_param_code)
         sl_pan_y, r_pan_y = create_slider("Largo Y", 20, 200, 80, False, generate_param_code)
         sl_pan_z, r_pan_z = create_slider("Alto Z", 2, 50, 10, False, generate_param_code)
@@ -666,7 +677,6 @@ def main(page: ft.Page):
         sl_vor_d, r_vor_d = create_slider("Densidad Red", 4, 24, 12, True, generate_param_code)
         col_voronoi = ft.Column([ft.Text("Carcasa Voronoi Cilíndrica. Matrices de sustracción radial.", color="#FBC02D", size=12), ft.Container(content=ft.Column([r_vor_ro, r_vor_ri, r_vor_h, r_vor_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        # FASE 10: ENGRANAJES EVOLVENTE, CREMALLERA Y CÓNICO
         sl_evo_d, r_evo_d = create_slider("Nº Dientes", 8, 60, 20, True, generate_param_code)
         sl_evo_m, r_evo_m = create_slider("Módulo", 1, 10, 2, False, generate_param_code)
         sl_evo_h, r_evo_h = create_slider("Grosor (Z)", 2, 50, 10, False, generate_param_code)
@@ -684,7 +694,6 @@ def main(page: ft.Page):
         sl_con_h, r_con_h = create_slider("Altura Cono", 5, 100, 20, False, generate_param_code)
         col_conico = ft.Column([ft.Text("Engranaje Cónico (Bevel Gear) - Slicing en Z.", color="#FFAB00", size=12), ft.Container(content=ft.Column([r_con_d, r_con_rb, r_con_rt, r_con_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        # INTERFACES MANTENIDAS (Fases 1-8)
         sl_mc_x, r_mc_x = create_slider("Ancho X", 20, 200, 60, False, generate_param_code)
         sl_mc_y, r_mc_y = create_slider("Largo Y", 20, 200, 40, False, generate_param_code)
         sl_mc_z, r_mc_z = create_slider("Alto Z", 10, 100, 30, False, generate_param_code)
