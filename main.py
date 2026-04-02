@@ -131,11 +131,17 @@ def main(page: ft.Page):
             final_code += f"  return {final_var};\n}}"
             txt_code.value = final_code; txt_code.update(); page.update()
 
+        # AQUÍ ESTÁ EL BOTONERO PERDIDO (Snippet UI)
+        row_snippets = ft.Row([
+            ft.Text("IA / Manual:", color="#8B949E", size=12),
+            ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[5,5,5]});"), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("+ Cil", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});"), bgcolor="#21262D", color="white"),
+        ], scroll="auto")
+
         # =========================================================
         # ARQUITECTURA DE ENLACE DE EVENTOS (WRAPPER)
         # =========================================================
         def update_code_wrapper(e=None):
-            # Delegamos la llamada a generate_param_code que se define más abajo
             generate_param_code()
 
         def create_slider(label, min_v, max_v, val, is_int):
@@ -990,14 +996,14 @@ def main(page: ft.Page):
             txt_code.update()
 
         # =========================================================
-        # ENLACE FINAL DE EVENTOS (Ya existe generate_param_code)
+        # ENLACE FINAL DE EVENTOS 
         # =========================================================
         tf_texto.on_change = update_code_wrapper
         dd_txt_estilo.on_change = update_code_wrapper
         dd_txt_base.on_change = update_code_wrapper
 
         # =========================================================
-        # CONSTRUCCIÓN DE INTERFAZ GENERAL (MENÚS Y BOTONES)
+        # CONSTRUCCIÓN DE INTERFAZ GENERAL 
         # =========================================================
         def update_constructor_ui(e=None):
             paneles = [
@@ -1083,7 +1089,6 @@ def main(page: ft.Page):
             ft.Text("📦 Geometría Básica:", size=12, color="#8B949E"), cat_basico,
             ft.Divider(color="#30363D"),
             
-            # PANELES (OCULTOS POR DEFECTO)
             col_custom, col_texto, col_naca, col_helice, col_codo,
             col_muelle, col_rotula, col_planetario, col_polea, col_rodamiento, 
             col_acme, col_carcasa, col_fijacion, col_abrazadera, col_pcb, col_bisagra, 
@@ -1101,7 +1106,7 @@ def main(page: ft.Page):
                 ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project(), color="white", bgcolor="#0D47A1"),
                 ft.ElevatedButton("🗑️ RESET", on_click=lambda _: clear_editor(), color="white", bgcolor="#B71C1C"), 
             ], scroll="auto"),
-            row_snippets, 
+            row_snippets, # <-- Restaurado correctamente
             txt_code
         ], expand=True)
 
