@@ -56,16 +56,16 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 threading.Thread(target=lambda: http.server.HTTPServer(("127.0.0.1", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
-# APLICACIÓN PRINCIPAL v15.0 (PRODUCTION & LOFTING)
+# APLICACIÓN PRINCIPAL v16.0 (ARCHITECT & LASER)
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v15.0"
+        page.title = "NEXUS CAD v16.0"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v15.0 PRO | Fases 11 y 12 Desplegadas (Matrices y Lofting)", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v16.0 PRO | Ensamblador Activo. Generación Láser lista.", color="#00E5FF", weight="bold")
 
         def copy_text(text_to_copy):
             try:
@@ -83,9 +83,17 @@ def main(page: ft.Page):
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,10], radius:[20,20,10]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D")
 
+        # ESTADO DEL ENSAMBLADOR (FASE 14)
+        ensamble_stack = []
+
         def clear_editor():
+            nonlocal ensamble_stack
+            ensamble_stack = []
             txt_code.value = "function main() {\n  var pieza = CSG.cube({center:[0,0,0], radius:[10,10,10]});\n  return pieza;\n}"
+            status.value = "✓ Ensamble reseteado."
+            status.color = "#B71C1C"
             txt_code.update()
+            page.update()
 
         def inject_snippet(code_snippet):
             c = txt_code.value
@@ -96,20 +104,86 @@ def main(page: ft.Page):
                 txt_code.value = c + "\n" + code_snippet
             txt_code.update()
 
-        def run_render():
+        # FASE 15: UX DE RENDERIZADO ASÍNCRONO
+        render_progress = ft.ProgressBar(color="#00E5FF", bgcolor="#161B22", visible=False)
+        render_text = ft.Text("Procesando Malla...", color="#00E5FF", size=12, visible=False, italic=True)
+
+        def process_render():
             global LATEST_CODE_B64
+            # Simular carga para forzar update UI y dar tiempo al thread
+            time.sleep(0.5) 
             LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
+            render_progress.visible = False
+            render_text.visible = False
             set_tab(2)
             page.update()
 
+        def run_render():
+            render_progress.visible = True
+            render_text.visible = True
+            page.update()
+            # Desacoplar el cálculo pesado del hilo UI
+            threading.Thread(target=process_render, daemon=True).start()
+
+        # FASE 14: LÓGICA DEL ENSAMBLADOR MODULAR
+        def parse_current_tool_to_stack_var():
+            # Extrae el cuerpo de la función generada por la UI
+            code_lines = txt_code.value.split('\n')
+            var_name = f"obj_{len(ensamble_stack)}"
+            body = []
+            for line in code_lines[1:-1]: # Ignorar function main() y return
+                if line.strip().startswith("return "):
+                    ret_val = line.replace("return", "").replace(";", "").strip()
+                    body.append(f"  var {var_name} = {ret_val};")
+                else:
+                    body.append(line)
+            return "\n".join(body), var_name
+
+        def add_to_stack(op_type):
+            nonlocal ensamble_stack
+            body, var_name = parse_current_tool_to_stack_var()
+            
+            if not ensamble_stack:
+                # Primer objeto, es la base
+                ensamble_stack.append({"body": body, "var": var_name, "op": "base"})
+                status.value = f"✓ Pieza Base añadida al Ensamble."
+            else:
+                ensamble_stack.append({"body": body, "var": var_name, "op": op_type})
+                status.value = f"✓ Operación [{op_type}] añadida a la pila."
+            
+            status.color = "#00E676"
+            compile_stack_to_editor()
+
+        def compile_stack_to_editor():
+            if not ensamble_stack: return
+            
+            final_code = "function main() {\n"
+            final_var = ""
+            
+            for i, item in enumerate(ensamble_stack):
+                final_code += f"  // --- Modificador {i} ({item['op']}) ---\n"
+                final_code += item["body"] + "\n"
+                
+                if item["op"] == "base":
+                    final_var = item["var"]
+                elif item["op"] == "union":
+                    final_code += f"  {final_var} = {final_var}.union({item['var']});\n"
+                elif item["op"] == "subtract":
+                    final_code += f"  {final_var} = {final_var}.subtract({item['var']});\n"
+            
+            final_code += f"  return {final_var};\n}}"
+            txt_code.value = final_code
+            txt_code.update()
+            page.update()
+
         row_snippets = ft.Row([
-            ft.Text("Primitivas:", color="#8B949E", size=12),
+            ft.Text("IA / Manual:", color="#8B949E", size=12),
             ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[5,5,5]});"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("- Restar", on_click=lambda _: inject_snippet("  pieza = pieza.subtract(pieza2);"), bgcolor="#DA3633", color="white"),
+            ft.ElevatedButton("+ Cil", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5, slices:32});"), bgcolor="#21262D", color="white"),
         ], scroll="auto")
 
         herramienta_actual = "custom"
+        modo_ensamble = False
 
         def create_slider(label, min_v, max_v, val, is_int, on_change_fn):
             txt_val = ft.Text(f"{int(val) if is_int else val:.1f}", color="#00E5FF", width=45, text_align="right", size=13, weight="bold")
@@ -118,28 +192,66 @@ def main(page: ft.Page):
             def internal_change(e):
                 txt_val.value = f"{int(sl.value) if is_int else sl.value:.1f}"
                 txt_val.update()
-                on_change_fn(e)
+                if not modo_ensamble: # Solo autogenerar si no estamos ensamblando piezas
+                    on_change_fn(e)
             sl.on_change = internal_change
             return sl, ft.Row([ft.Text(label, width=110, size=12, color="#E6EDF3"), sl, txt_val])
 
         sl_g_tol, r_g_tol = create_slider("Tol. Global (mm)", 0.0, 1.0, 0.2, False, lambda e: generate_param_code())
+        
+        def toggle_ensamble(e):
+            nonlocal modo_ensamble
+            modo_ensamble = sw_ensamble.value
+            panel_ensamble_ops.visible = modo_ensamble
+            if modo_ensamble:
+                status.value = "Modo Ensamble Activado. Ajusta la pieza y pulsa [+] o [-]."
+                status.color = "#FFAB00"
+            else:
+                status.value = "Modo Normal. Sobrescribiendo código..."
+                status.color = "#8B949E"
+            page.update()
+
+        sw_ensamble = ft.Switch(label="Activar Ensamblador (Stack)", value=False, on_change=toggle_ensamble, active_color="#FFAB00")
+        
+        panel_ensamble_ops = ft.Row([
+            ft.ElevatedButton("➕ UNIR AL ENSAMBLE", on_click=lambda _: add_to_stack("union"), bgcolor="#1B5E20", color="white", expand=True),
+            ft.ElevatedButton("➖ RESTAR AL ENSAMBLE", on_click=lambda _: add_to_stack("subtract"), bgcolor="#B71C1C", color="white", expand=True)
+        ], visible=False)
+
         panel_tolerancia = ft.Container(
             content=ft.Column([
-                ft.Text("⚙️ CORE: Ajuste de Compensación 3D", color="#FFAB00", weight="bold", size=11),
+                ft.Row([ft.Text("⚙️ CORE: Ajustes Visuales", color="#FFAB00", weight="bold", size=11), sw_ensamble]),
+                panel_ensamble_ops,
                 r_g_tol
             ]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#333333")
         )
 
         # =========================================================
-        # MOTOR PARAMÉTRICO V15.0 (32 HERRAMIENTAS - CERO FLIP)
+        # MOTOR PARAMÉTRICO V16.0 (33 HERRAMIENTAS - LÁSER AÑADIDO)
         # =========================================================
         def generate_param_code(e=None):
             h = herramienta_actual
             tol_global = sl_g_tol.value 
             
-            if h == "custom": pass 
+            if h == "custom" and not modo_ensamble: pass 
 
-            # ===== FASE 11: MATRICES DE PRODUCCIÓN =====
+            # ===== FASE 13/15: PERFIL LÁSER (SVG SLICING) =====
+            elif h == "laser":
+                w, l, h_corte = sl_las_x.value, sl_las_y.value, sl_las_z.value
+                code = f"function main() {{\n  var w = {w}; var l = {l}; var z_cut = {h_corte};\n"
+                code += f"  // Demo de Proyección 2D. Reemplaza 'base_obj' por tu código complejo.\n"
+                code += f"  var base_obj = CSG.cube({{center:[0,0,10], radius:[w/2, l/2, 10]}});\n"
+                code += f"  var agujero = CSG.cylinder({{start:[0,0,-1], end:[0,0,21], radius:5, slices:16}});\n"
+                code += f"  base_obj = base_obj.subtract(agujero);\n"
+                code += f"  // Generador de Perfil 2D Z-Slice\n"
+                code += f"  var cut_plane = CSG.cube({{center:[0,0,z_cut], radius:[w, l, 0.1]}});\n"
+                code += f"  var slice_2d = base_obj.intersect(cut_plane);\n"
+                code += f"  // Engrosamos la tajada para que sea visible en 3D como una hoja de papel\n"
+                code += f"  var slice_3d = slice_2d.scale([1,1,10]); // Escalar en Z para visibilidad\n"
+                code += f"  return slice_3d;\n}}"
+                if not modo_ensamble: txt_code.value = code
+
+            # ===== FASE 11: MATRICES =====
             elif h == "array_lin":
                 filas, col, dx, dy, hd = int(sl_alin_f.value), int(sl_alin_c.value), sl_alin_dx.value, sl_alin_dy.value, sl_alin_h.value
                 code = f"function main() {{\n  var filas = {filas}; var columnas = {col};\n"
@@ -151,13 +263,12 @@ def main(page: ft.Page):
                 code += f"      for(var j=0; j<columnas; j++) {{\n"
                 code += f"          var px = start_x + (j * dx);\n"
                 code += f"          var py = start_y + (i * dy);\n"
-                code += f"          // Base Piece (Customizable by user in CODE tab)\n"
                 code += f"          var pieza = CSG.cylinder({{start:[px,py,0], end:[px,py,h], radius:5, slices:16}});\n"
                 code += f"          if(array_obj === null) array_obj = pieza; else array_obj = array_obj.union(pieza);\n"
                 code += f"      }}\n  }}\n"
                 code += f"  if(array_obj === null) return CSG.cube({{center:[0,0,0], radius:[1,1,1]}});\n"
                 code += f"  return array_obj;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "array_pol":
                 n, rad, r_pieza, hd = int(sl_apol_n.value), sl_apol_r.value, sl_apol_rp.value, sl_apol_h.value
@@ -167,57 +278,45 @@ def main(page: ft.Page):
                 code += f"      var a = (i * Math.PI * 2) / n;\n"
                 code += f"      var px = Math.cos(a) * radio_corona;\n"
                 code += f"      var py = Math.sin(a) * radio_corona;\n"
-                code += f"      // Base Piece (Customizable by user)\n"
                 code += f"      var pieza = CSG.cylinder({{start:[px,py,0], end:[px,py,h], radius:r_pieza, slices:16}});\n"
                 code += f"      if(array_obj === null) array_obj = pieza; else array_obj = array_obj.union(pieza);\n"
                 code += f"  }}\n"
                 code += f"  var base = CSG.cylinder({{start:[0,0,0], end:[0,0,h/2], radius:radio_corona + r_pieza + 2, slices:32}});\n"
                 code += f"  if(array_obj !== null) base = base.subtract(array_obj);\n"
                 code += f"  return base;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
-            # ===== FASE 12: SUPERFICIES DE TRANSICIÓN (LOFTING) =====
+            # ===== FASE 12: LOFTING =====
             elif h == "loft":
                 w, r_top, ht, grosor = sl_loft_w.value, sl_loft_r.value, sl_loft_h.value, sl_loft_g.value
                 code = f"function main() {{\n  var side_base = {w}; var r_top = {r_top}; var h = {ht}; var wall = {grosor};\n"
-                code += f"  var res = 40; // Slices en Z\n"
-                code += f"  var dz = h / res;\n"
-                code += f"  var loft_obj = null;\n"
-                code += f"  var hueco = null;\n"
+                code += f"  var res = 40;\n  var dz = h / res;\n"
+                code += f"  var loft_obj = null; var hueco = null;\n"
                 code += f"  for(var i=0; i<res; i++) {{\n"
-                code += f"      var z = i * dz;\n"
-                code += f"      var t = i / res; // Factor de interpolacion 0 a 1\n"
+                code += f"      var z = i * dz;\n      var t = i / res;\n"
                 code += f"      var slice_res = 32;\n"
                 code += f"      for(var j=0; j<slice_res; j++) {{\n"
                 code += f"          var a1 = (j * Math.PI * 2) / slice_res;\n"
                 code += f"          var a2 = ((j+1) * Math.PI * 2) / slice_res;\n"
-                code += f"          // Circulo Superior\n"
                 code += f"          var cx1 = Math.cos(a1) * r_top; var cy1 = Math.sin(a1) * r_top;\n"
-                code += f"          // Cuadrado Inferior (Mapeo polar al cuadrado)\n"
                 code += f"          var sec = Math.floor(j / (slice_res/4));\n"
-                code += f"          var sqx1 = 0; var sqy1 = 0;\n"
-                code += f"          var m = side_base/2;\n"
+                code += f"          var sqx1 = 0; var sqy1 = 0; var m = side_base/2;\n"
                 code += f"          if(sec==0) {{ sqx1=m; sqy1=m * Math.tan(a1); }} else if(sec==1) {{ sqx1=m/Math.tan(a1); sqy1=m; }} else if(sec==2) {{ sqx1=-m; sqy1=-m*Math.tan(a1); }} else {{ sqx1=-m/Math.tan(a1); sqy1=-m; }}\n"
                 code += f"          if(Math.abs(sqx1)>m) sqx1 = Math.sign(sqx1)*m;\n"
                 code += f"          if(Math.abs(sqy1)>m) sqy1 = Math.sign(sqy1)*m;\n"
-                code += f"          // Interpolacion Lineal\n"
-                code += f"          var x_curr = sqx1*(1-t) + cx1*t;\n"
-                code += f"          var y_curr = sqy1*(1-t) + cy1*t;\n"
+                code += f"          var x_curr = sqx1*(1-t) + cx1*t; var y_curr = sqy1*(1-t) + cy1*t;\n"
                 code += f"          var x_int = (Math.abs(sqx1)>0 ? sqx1-Math.sign(sqx1)*wall : 0)*(1-t) + Math.cos(a1)*(r_top-wall)*t;\n"
                 code += f"          var y_int = (Math.abs(sqy1)>0 ? sqy1-Math.sign(sqy1)*wall : 0)*(1-t) + Math.sin(a1)*(r_top-wall)*t;\n"
-                code += f"          // Generar malla sólida\n"
                 code += f"          var p_ext = CSG.cylinder({{start:[x_curr, y_curr, z], end:[x_curr, y_curr, z+dz+0.1], radius:wall/2, slices:8}});\n"
                 code += f"          var p_int = CSG.cylinder({{start:[x_int, y_int, z], end:[x_int, y_int, z+dz+0.1], radius:wall/4, slices:4}});\n"
                 code += f"          if(loft_obj === null) loft_obj = p_ext; else loft_obj = loft_obj.union(p_ext);\n"
                 code += f"          if(hueco === null) hueco = p_int; else hueco = hueco.union(p_int);\n"
                 code += f"      }}\n  }}\n"
                 code += f"  if(loft_obj === null) return CSG.cube({{center:[0,0,0], radius:[1,1,1]}});\n"
-                code += f"  // Para este prototipo, devolvemos el cascaron rellenando el interior para simplificar BSP\n"
-                code += f"  var solid = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:Math.max(side_base, r_top), slices:32}});\n"
-                code += f"  return loft_obj; // Visión estructural pura por vértices\n}}"
-                txt_code.value = code
+                code += f"  return loft_obj;\n}}"
+                if not modo_ensamble: txt_code.value = code
 
-            # ===== HERRAMIENTAS MANTENIDAS (Fases 1-10) =====
+            # ===== HERRAMIENTAS MANTENIDAS =====
             elif h == "panal":
                 w, l, ht, r_hex = sl_pan_x.value, sl_pan_y.value, sl_pan_z.value, sl_pan_r.value
                 code = f"function main() {{\n  var width = {w}; var length = {l}; var h = {ht}; var r_hex = {r_hex};\n"
@@ -238,7 +337,7 @@ def main(page: ft.Page):
                 code += f"          }}\n      }}\n  }}\n"
                 code += f"  if(holes !== null) core_vol = core_vol.subtract(holes);\n"
                 code += f"  return frame.union(core_vol);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "voronoi":
                 ro, ri, ht, density = sl_vor_ro.value, sl_vor_ri.value, sl_vor_h.value, int(sl_vor_d.value)
@@ -260,7 +359,7 @@ def main(page: ft.Page):
                 code += f"      }}\n      t++;\n  }}\n"
                 code += f"  if(holes !== null) return pipe.subtract(holes);\n"
                 code += f"  return pipe;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "evolvente":
                 dientes, mod, ht = int(sl_evo_d.value), sl_evo_m.value, sl_evo_h.value
@@ -281,7 +380,7 @@ def main(page: ft.Page):
                 code += f"      gear = gear.union(t1).union(t2).union(t3);\n  }}\n"
                 code += f"  var hole = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius: r_root * 0.3, slices:32}});\n"
                 code += f"  return gear.subtract(hole);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "cremallera":
                 dientes, mod, ht, w = int(sl_crem_d.value), sl_crem_m.value, sl_crem_h.value, sl_crem_w.value
@@ -294,16 +393,13 @@ def main(page: ft.Page):
                 code += f"      var px = i * pitch + pitch/2;\n"
                 code += f"      var t1 = CSG.cube({{center:[px, w + m*0.2, h/2], radius:[t_w*0.4, m*0.3, h/2]}});\n"
                 code += f"      var t2 = CSG.cube({{center:[px, w + m*0.7, h/2], radius:[t_w*0.2, m*0.4, h/2]}});\n"
-                code += f"      rack = rack.union(t1).union(t2);\n  }}\n"
-                code += f"  return rack;\n}}"
-                txt_code.value = code
+                code += f"      rack = rack.union(t1).union(t2);\n  }}\n  return rack;\n}}"
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "conico":
                 dientes, r_base, r_top, ht = int(sl_con_d.value), sl_con_rb.value, sl_con_rt.value, sl_con_h.value
                 code = f"function main() {{\n  var dientes = {dientes}; var rb = {r_base}; var rt = {r_top}; var h = {ht};\n"
-                code += f"  var res = 20;\n"
-                code += f"  var dz = h / res;\n"
-                code += f"  var gear = null;\n"
+                code += f"  var res = 20;\n  var dz = h / res;\n  var gear = null;\n"
                 code += f"  var m = rb / (dientes/2);\n"
                 code += f"  for(var z=0; z<res; z++) {{\n"
                 code += f"      var z_pos = z * dz;\n"
@@ -322,7 +418,7 @@ def main(page: ft.Page):
                 code += f"  var hole = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius: rt * 0.3, slices:16}});\n"
                 code += f"  if(gear !== null) return gear.subtract(hole);\n"
                 code += f"  return CSG.cube({{center:[0,0,0], radius:[1,1,1]}});\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "multicaja":
                 w, l, ht, tol_tapa, sep = sl_mc_x.value, sl_mc_y.value, sl_mc_z.value, sl_mc_tol.value, sl_mc_sep.value
@@ -336,7 +432,7 @@ def main(page: ft.Page):
                 code += f"  var tapa_i = CSG.cube({{center:[0,0, offsetZ - t/2], radius:[w/2-t-tol, l/2-t-tol, t/2]}});\n"
                 code += f"  var tapa = tapa_b.union(tapa_i);\n"
                 code += f"  return caja.union(tapa);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "perfil":
                 puntas, rext, rint, ht = int(sl_perf_p.value), sl_perf_re.value, sl_perf_ri.value, sl_perf_h.value
@@ -351,7 +447,7 @@ def main(page: ft.Page):
                 code += f"     var punta = CSG.cylinder({{start:[px, py, 0], end:[px, py, h], radius:r_punta, slices:16}});\n"
                 code += f"     pieza = pieza.union(punta);\n  }}\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "revolucion":
                 ht, r1, r2, grosor = sl_rev_h.value, sl_rev_r1.value, sl_rev_r2.value, sl_rev_g.value
@@ -371,7 +467,7 @@ def main(page: ft.Page):
                 code += f"      }}\n  }}\n"
                 code += f"  if(grosor > 0 && hueco !== null) solido = solido.subtract(hueco);\n"
                 code += f"  return solido;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "cubo":
                 g = sl_c_grosor.value
@@ -380,7 +476,7 @@ def main(page: ft.Page):
                     g = min(g, min(sl_c_x.value, sl_c_y.value) / 2.1)
                     code += f"  var int_box = CSG.cube({{center:[0,0,{sl_c_z.value/2 + g}], radius:[{sl_c_x.value/2 - g}, {sl_c_y.value/2 - g}, {sl_c_z.value/2}]}});\n  pieza = pieza.subtract(int_box);\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "cilindro":
                 rint = min(sl_p_rint.value, sl_p_rext.value - 0.5)
@@ -389,7 +485,7 @@ def main(page: ft.Page):
                 if rint > 0:
                     code += f"  var int_cyl = CSG.cylinder({{start:[0,0,-1], end:[0,0,{sl_p_h.value+2}], radius:{rint}, slices:{c}}});\n  pieza = pieza.subtract(int_cyl);\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
             
             elif h == "escuadra":
                 l, w, t, hr, chaf = sl_l_largo.value, sl_l_ancho.value, sl_l_grosor.value, sl_l_hueco.value, sl_l_chaf.value
@@ -404,7 +500,7 @@ def main(page: ft.Page):
                     code += f"  var h2 = CSG.cylinder({{start:[-1, w/2, l*0.7], end:[t+1, w/2, l*0.7], radius:r, slices:32}});\n"
                     code += f"  pieza = pieza.subtract(h1).subtract(h2);\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
                 
             elif h == "engranaje":
                 d, r, ht, eje = int(sl_e_dientes.value), sl_e_radio.value, sl_e_grosor.value, sl_e_eje.value
@@ -415,7 +511,7 @@ def main(page: ft.Page):
                 code += f"    var diente = CSG.cube({{center:[Math.cos(a)*r, Math.sin(a)*r, h/2], radius:[{d_x}, {d_y}, h/2]}});\n    pieza = pieza.union(diente);\n  }}\n"
                 if eje > 0: code += f"  var hueco = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:{eje} + g_tol, slices:32}});\n  pieza = pieza.subtract(hueco);\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "fijacion":
                 m, l_tornillo = sl_fij_m.value, sl_fij_l.value
@@ -437,7 +533,7 @@ def main(page: ft.Page):
                     code += f"      var anillo = CSG.cylinder({{start:[0,0,z], end:[0,0,z+paso], radius:({r_eje} - g_tol), slices:16}});\n"
                     code += f"      pieza = pieza.union(anillo);\n"
                     code += f"  }}\n  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "rodamiento":
                 d_int, d_ext, ht = sl_rod_dint.value, sl_rod_dext.value, sl_rod_h.value
@@ -456,7 +552,7 @@ def main(page: ft.Page):
                 code += f"      var by = Math.sin(a) * radio_centro;\n"
                 code += f"      var bola = CSG.sphere({{center:[bx, by, h/2], radius:(r_espacio*0.95) - (g_tol/2), resolution:16}});\n"
                 code += f"      pieza = pieza.union(bola);\n  }}\n  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "planetario":
                 r_sol, r_planeta, ht = sl_plan_rs.value, sl_plan_rp.value, sl_plan_h.value
@@ -497,7 +593,7 @@ def main(page: ft.Page):
                 code += f"  var obj = sol.union(corona);\n"
                 code += f"  if(planetas !== null) obj = obj.union(planetas);\n"
                 code += f"  return obj;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "polea":
                 dientes, ancho, d_eje = int(sl_pol_t.value), sl_pol_w.value, sl_pol_d.value
@@ -515,7 +611,7 @@ def main(page: ft.Page):
                 code += f"  var polea = base.union(cuerpo).union(tapa);\n"
                 code += f"  polea = polea.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,5+ancho], radius:r_eje + (g_tol/2), slices:32}}));\n"
                 code += f"  return polea;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "helice":
                 rad, n_aspas, pitch = sl_hel_r.value, int(sl_hel_n.value), sl_hel_p.value
@@ -532,7 +628,7 @@ def main(page: ft.Page):
                 code += f"    if(aspas === null) aspas = aspa; else aspas = aspas.union(aspa);\n  }}\n"
                 code += f"  if(aspas !== null) hub = hub.union(aspas);\n"
                 code += f"  return hub.subtract(agujero);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "texto":
                 txt_input = tf_texto.value.upper()[:12] 
@@ -560,7 +656,7 @@ def main(page: ft.Page):
   if(piezaText === null) return base;
   return piezaText.union(base);
 }}"""
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "abrazadera":
                 diam, grosor, ancho = sl_clamp_d.value, sl_clamp_g.value, sl_clamp_w.value
@@ -575,7 +671,7 @@ def main(page: ft.Page):
                 code += f"  var m3 = CSG.cylinder({{start:[ distPestana, 10, ancho/2 ], end:[ distPestana, -10, ancho/2 ], radius:1.7 + (g_tol/2), slices:16}});\n"
                 code += f"  var m3_2 = CSG.cylinder({{start:[ -distPestana, 10, ancho/2 ], end:[ -distPestana, -10, ancho/2 ], radius:1.7 + (g_tol/2), slices:16}});\n"
                 code += f"  return arco.union(pestana).union(pestana2).subtract(m3).subtract(m3_2);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "bisagra":
                 l, d = sl_bi_l.value, sl_bi_d.value
@@ -588,7 +684,7 @@ def main(page: ft.Page):
                 code += f"  var fijo = fix.union(fix2).subtract(cut_pin).union(pin);\n"
                 code += f"  var movil = move.subtract(cut_pin);\n"
                 code += f"  return fijo.union(movil);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "vslot":
                 l = sl_v_l.value
@@ -599,7 +695,7 @@ def main(page: ft.Page):
                 code += f"  pieza = pieza.subtract(CSG.cube({{center:[10,0,l/2], radius:[2,3,l/2+1]}})).subtract(CSG.cube({{center:[8.5,0,l/2], radius:[1.5,5,l/2+1]}}));\n"
                 code += f"  pieza = pieza.subtract(CSG.cube({{center:[-10,0,l/2], radius:[2,3,l/2+1]}})).subtract(CSG.cube({{center:[-8.5,0,l/2], radius:[1.5,5,l/2+1]}}));\n"
                 code += f"  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
                 
             elif h == "pcb":
                 px, py, ht, t = sl_pcb_x.value, sl_pcb_y.value, sl_pcb_h.value, sl_pcb_t.value
@@ -613,7 +709,7 @@ def main(page: ft.Page):
                 code += f"    var cyl = CSG.cylinder({{start:[m[i][0]*dx, m[i][1]*dy, 0], end:[m[i][0]*dx, m[i][1]*dy, h-2], radius: 3.5, slices:16}});\n"
                 code += f"    var hole = CSG.cylinder({{start:[m[i][0]*dx, m[i][1]*dy, 2], end:[m[i][0]*dx, m[i][1]*dy, h], radius: 1.5 + (g_tol/2), slices:16}});\n"
                 code += f"    pieza = pieza.union(cyl).subtract(hole);\n  }}\n  return pieza;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "rotula":
                 rb = sl_rot_r.value
@@ -626,7 +722,7 @@ def main(page: ft.Page):
                 code += f"  var apertura = CSG.cylinder({{start:[0,0,r_bola*0.5], end:[0,0,r_bola*2], radius:r_bola*0.8, slices:32}});\n"
                 code += f"  var componente_copa = copa_ext.subtract(hueco_bola).subtract(apertura);\n"
                 code += f"  return componente_bola.union(componente_copa);\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "carcasa":
                 w, l, ht, t = sl_car_x.value, sl_car_y.value, sl_car_z.value, sl_car_t.value
@@ -650,7 +746,7 @@ def main(page: ft.Page):
                 code += f"      }}\n  }}\n"
                 code += f"  if(vents !== null) base = base.subtract(vents);\n"
                 code += f"  return base;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "muelle":
                 r_res = sl_mue_r.value; r_hilo = sl_mue_h.value; vueltas = sl_mue_v.value; alt = sl_mue_alt.value
@@ -665,7 +761,7 @@ def main(page: ft.Page):
                 code += f"      var seg = CSG.cylinder({{start:[x1,y1,z1], end:[x2,y2,z2], radius:r_hilo, slices:8}});\n"
                 code += f"      var esp = CSG.sphere({{center:[x2,y2,z2], radius:r_hilo, resolution:8}});\n"
                 code += f"      if(resorte === null) resorte = seg.union(esp); else resorte = resorte.union(seg).union(esp);\n  }}\n  return resorte;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "acme":
                 d = sl_acme_d.value; pitch = sl_acme_p.value; length = sl_acme_l.value
@@ -682,7 +778,7 @@ def main(page: ft.Page):
                 code += f"      var seg = CSG.cylinder({{start:[Math.cos(a1)*r, Math.sin(a1)*r, z1], end:[Math.cos(a2)*r, Math.sin(a2)*r, z2], radius:w, slices:8}});\n"
                 code += f"      if(thread === null) thread = seg; else thread = thread.union(seg);\n  }}\n"
                 code += f"  if(thread !== null) eje = eje.union(thread);\n  return eje;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "codo":
                 rt = sl_codo_r.value; rc = sl_codo_c.value; ang = sl_codo_a.value; gro = sl_codo_g.value
@@ -711,7 +807,7 @@ def main(page: ft.Page):
                 code += f"         if(hueco === null) hueco = hol; else hueco = hueco.union(hol);\n"
                 code += f"     }}\n"
                 code += f"     if(hueco !== null) codo = codo.subtract(hueco);\n  }}\n  return codo;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             elif h == "naca":
                 cuerda, grosor, envergadura = sl_naca_c.value, sl_naca_g.value, sl_naca_e.value
@@ -725,12 +821,12 @@ def main(page: ft.Page):
                 code += f"      var yt_real = Math.max(yt * cuerda, 0.1);\n"
                 code += f"      var cyl = CSG.cylinder({{start:[x_real, 0, 0], end:[x_real, 0, envergadura], radius: yt_real, slices: 16}});\n"
                 code += f"      if(ala === null) ala = cyl; else ala = ala.union(cyl);\n  }}\n  return ala;\n}}"
-                txt_code.value = code
+                if not modo_ensamble: txt_code.value = code
 
             txt_code.update()
 
         # =========================================================
-        # SECCIÓN DE INTERFACES (32 HERRAMIENTAS ACTIVAS)
+        # SECCIÓN DE INTERFACES (33 HERRAMIENTAS ACTIVAS)
         # =========================================================
         col_custom = ft.Column([
             ft.Text("Módulo Activo: Tu Código de IA", color="#00E676", weight="bold"),
@@ -741,7 +837,12 @@ def main(page: ft.Page):
             ], scroll="auto")
         ], visible=True)
 
-        # FASE 11: MATRICES
+        # FASE 13/15: LASER PROJECTION
+        sl_las_x, r_las_x = create_slider("Ancho Objeto", 10, 200, 50, False, generate_param_code)
+        sl_las_y, r_las_y = create_slider("Largo Objeto", 10, 200, 50, False, generate_param_code)
+        sl_las_z, r_las_z = create_slider("Altura Z Corte", 0, 100, 5, False, generate_param_code)
+        col_laser = ft.Column([ft.Text("Generador de Perfil Láser (SVG). Corta mallas en Z.", color="#D50000", size=12), ft.Container(content=ft.Column([r_las_x, r_las_y, r_las_z]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+
         sl_alin_f, r_alin_f = create_slider("Filas (Y)", 1, 10, 3, True, generate_param_code)
         sl_alin_c, r_alin_c = create_slider("Columnas (X)", 1, 10, 3, True, generate_param_code)
         sl_alin_dx, r_alin_dx = create_slider("Distancia X", 5, 100, 20, False, generate_param_code)
@@ -755,14 +856,12 @@ def main(page: ft.Page):
         sl_apol_h, r_apol_h = create_slider("Grosor (Z)", 2, 50, 5, False, generate_param_code)
         col_array_pol = ft.Column([ft.Text("Matriz Polar (Radial). Distribución matemática 360º.", color="#00B0FF", size=12), ft.Container(content=ft.Column([r_apol_n, r_apol_r, r_apol_rp, r_apol_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        # FASE 12: LOFTING
         sl_loft_w, r_loft_w = create_slider("Ancho Base SQ", 10, 150, 60, False, generate_param_code)
         sl_loft_r, r_loft_r = create_slider("Radio Top Círculo", 5, 100, 20, False, generate_param_code)
         sl_loft_h, r_loft_h = create_slider("Altura Z", 10, 200, 80, False, generate_param_code)
         sl_loft_g, r_loft_g = create_slider("Grosor Pared", 1, 10, 2, False, generate_param_code)
         col_loft = ft.Column([ft.Text("Lofting: Adaptador Cuadrado a Círculo (Vértices 3D).", color="#D50000", size=12), ft.Container(content=ft.Column([r_loft_w, r_loft_r, r_loft_h, r_loft_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        # HERRAMIENTAS ANTERIORES
         sl_pan_x, r_pan_x = create_slider("Ancho X", 20, 200, 80, False, generate_param_code)
         sl_pan_y, r_pan_y = create_slider("Largo Y", 20, 200, 80, False, generate_param_code)
         sl_pan_z, r_pan_z = create_slider("Alto Z", 2, 50, 10, False, generate_param_code)
@@ -914,7 +1013,7 @@ def main(page: ft.Page):
         col_naca = ft.Column([ft.Text("Perfil Alar NACA (NASA).", color="#00E5FF", size=12), ft.Container(content=ft.Column([r_naca_c, r_naca_g, r_naca_e]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
         # =========================================================
-        # GESTIÓN DE VISIBILIDAD (32 PANELES)
+        # GESTIÓN DE VISIBILIDAD (33 PANELES)
         # =========================================================
         def update_constructor_ui(e=None):
             paneles = [
@@ -923,7 +1022,7 @@ def main(page: ft.Page):
                 col_planetario, col_polea, col_helice, col_texto, col_rotula, col_carcasa,
                 col_muelle, col_acme, col_codo, col_naca, col_multicaja, col_perfil, col_revolucion,
                 col_panal, col_voronoi, col_evolvente, col_cremallera, col_conico,
-                col_array_lin, col_array_pol, col_loft # NUEVOS
+                col_array_lin, col_array_pol, col_loft, col_laser
             ]
             for p in paneles: p.visible = False
             
@@ -960,6 +1059,7 @@ def main(page: ft.Page):
             elif v == "array_lin": col_array_lin.visible = True
             elif v == "array_pol": col_array_pol.visible = True
             elif v == "loft": col_loft.visible = True
+            elif v == "laser": col_laser.visible = True
             
             generate_param_code()
             page.update()
@@ -976,7 +1076,7 @@ def main(page: ft.Page):
             )
 
         cat_especial = ft.Row([thumbnail("🧠", "Mi Código", "custom", "#000000"), thumbnail("🔠", "Texto 3D", "texto", "#880E4F")], scroll="auto")
-        cat_produccion = ft.Row([thumbnail("🔲", "Matriz Grid", "array_lin", "#0091EA"), thumbnail("🎡", "Matriz Polar", "array_pol", "#00B0FF")], scroll="auto")
+        cat_produccion = ft.Row([thumbnail("🔪", "Perfil Láser", "laser", "#D50000"), thumbnail("🔲", "Matriz Grid", "array_lin", "#0091EA"), thumbnail("🎡", "Matriz Polar", "array_pol", "#00B0FF")], scroll="auto")
         cat_lofting = ft.Row([thumbnail("🌪️", "Adap. Loft", "loft", "#D50000")], scroll="auto")
         cat_topologia = ft.Row([thumbnail("🐝", "Panal Hex", "panal", "#F57F17"), thumbnail("🕸️", "Voronoi", "voronoi", "#6A1B9A")], scroll="auto")
         cat_engranajes = ft.Row([thumbnail("⚙️", "Evolvente", "evolvente", "#E65100"), thumbnail("🛤️", "Cremallera", "cremallera", "#5D4037"), thumbnail("🍦", "Cónico", "conico", "#D84315")], scroll="auto")
@@ -990,7 +1090,7 @@ def main(page: ft.Page):
         view_constructor = ft.Column([
             panel_tolerancia, 
             ft.Text("💡 Especiales y Branding:", size=12, color="#8B949E"), cat_especial,
-            ft.Text("🏭 Producción y Matrices (Fase 11):", size=12, color="#00B0FF"), cat_produccion,
+            ft.Text("🏭 Producción y Láser (Fase 11/15):", size=12, color="#00B0FF"), cat_produccion,
             ft.Text("🌪️ Transición de Formas (Fase 12):", size=12, color="#D50000"), cat_lofting,
             ft.Text("🧬 Topología y Voronoi:", size=12, color="#FBC02D"), cat_topologia,
             ft.Text("⚙️ Engranajes Avanzados:", size=12, color="#FF9100"), cat_engranajes,
@@ -1002,17 +1102,19 @@ def main(page: ft.Page):
             ft.Text("📦 Geometría Básica:", size=12, color="#8B949E"), cat_basico,
             ft.Divider(color="#30363D"),
             
-            # LAS 32 HERRAMIENTAS INYECTADAS
+            # LAS 33 HERRAMIENTAS INYECTADAS
             col_custom, col_texto, col_naca, col_helice, col_codo,
             col_muelle, col_rotula, col_planetario, col_polea, col_rodamiento, 
             col_acme, col_carcasa, col_fijacion, col_abrazadera, col_pcb, col_bisagra, 
             col_vslot, col_cubo, col_cilindro, col_escuadra, col_engranaje,
             col_multicaja, col_perfil, col_revolucion,
             col_panal, col_voronoi, col_evolvente, col_cremallera, col_conico,
-            col_array_lin, col_array_pol, col_loft,
+            col_array_lin, col_array_pol, col_loft, col_laser,
             
             ft.Container(height=10),
-            ft.ElevatedButton("▶ RENDERIZAR MALLA (3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
+            ft.ElevatedButton("▶ RENDERIZAR MALLA (3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf')),
+            render_progress,
+            render_text
         ], expand=True, scroll="auto")
 
         view_editor = ft.Column([
@@ -1030,7 +1132,7 @@ def main(page: ft.Page):
             ft.Text("Motor 3D Renderizado", text_align="center", color="#00E5FF", weight="bold"),
             ft.Row([btn_visor], alignment=ft.MainAxisAlignment.CENTER),
             ft.Container(height=20),
-            ft.Text("📦 Usa la función del visor web para separar STLs en ensamblajes.", color="#8B949E", text_align="center", size=12)
+            ft.Text("📦 Usa la función del visor web para exportar a STL.", color="#8B949E", text_align="center", size=12)
         ], expand=True)
         
         file_list = ft.ListView(expand=True, spacing=10)
@@ -1065,9 +1167,6 @@ def main(page: ft.Page):
 
         def set_tab(idx):
             tabs = [view_editor, view_constructor, view_visor, view_archivos]
-            if idx == 2:
-                global LATEST_CODE_B64
-                LATEST_CODE_B64 = base64.b64encode(txt_code.value.encode()).decode()
             if idx == 3: update_files()
             main_container.content = tabs[idx]
             page.update()
