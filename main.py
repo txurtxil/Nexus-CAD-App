@@ -282,7 +282,8 @@ def main(page: ft.Page):
         # =========================================================
         lbl_stl_status = ft.Text("No hay STL cargado. Selecciona un archivo 📂", color="#8B949E", size=11)
         
-        def on_file_picked(e: ft.FilePickerResultEvent):
+        # FIX: Eliminado el tipado 'e: ft.FilePickerResultEvent' para evitar AttributeError en versiones móviles de Flet
+        def on_file_picked(e):
             if e.files and len(e.files) > 0:
                 try:
                     src_path = e.files[0].path
@@ -641,8 +642,8 @@ def main(page: ft.Page):
                 code += f"          if(sec==0) {{ sqx1=m; sqy1=m * Math.tan(a1); }} else if(sec==1) {{ sqx1=m/Math.tan(a1); sqy1=m; }} else if(sec==2) {{ sqx1=-m; sqy1=-m*Math.tan(a1); }} else {{ sqx1=-m/Math.tan(a1); sqy1=-m; }}\n"
                 code += f"          if(Math.abs(sqx1)>m) sqx1 = Math.sign(sqx1)*m; if(Math.abs(sqy1)>m) sqy1 = Math.sign(sqy1)*m;\n"
                 code += f"          var x_curr = sqx1*(1-t) + cx1*t; var y_curr = sqy1*(1-t) + cy1*t;\n"
-                code += f"          var x_int = (Math.abs(sqx1)>0 ? sqx1-Math.sign(sqx1)*wall : 0)*(1-t) + Math.cos(a1)*(r_top-wall)*t;\n"
-                code += f"          var y_int = (Math.abs(sqy1)>0 ? sqy1-Math.sign(sqy1)*wall : 0)*(1-t) + Math.sin(a1)*(r_top-wall)*t;\n"
+                code += f"          var x_int = (Math.abs(sqx1)>0 ? sqx1-Math.sign(sqx1)*m : 0)*(1-t) + Math.cos(a1)*(r_top-wall)*t;\n"
+                code += f"          var y_int = (Math.abs(sqy1)>0 ? sqy1-Math.sign(sqy1)*m : 0)*(1-t) + Math.sin(a1)*(r_top-wall)*t;\n"
                 code += f"          var p_ext = CSG.cylinder({{start:[x_curr, y_curr, z], end:[x_curr, y_curr, z+dz+0.1], radius:wall/2, slices:8}});\n"
                 code += f"          var p_int = CSG.cylinder({{start:[x_int, y_int, z], end:[x_int, y_int, z+dz+0.1], radius:wall/4, slices:4}});\n"
                 code += f"          if(loft_obj === null) loft_obj = p_ext; else loft_obj = loft_obj.union(p_ext);\n"
