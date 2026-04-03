@@ -147,12 +147,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.0 PRO"
+        page.title = "NEXUS CAD v20.1 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.0 PRO | Modificador Híbrido (STL) Activo", color="#00E5FF", weight="bold")
+        status = ft.Text("NEXUS v20.1 PRO | Modificador Híbrido Activo", color="#00E5FF", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -282,9 +282,9 @@ def main(page: ft.Page):
         # =========================================================
         lbl_stl_status = ft.Text("No hay STL cargado. Selecciona un archivo 📂", color="#8B949E", size=11)
         
-        # FIX: Eliminado el tipado 'e: ft.FilePickerResultEvent' para evitar AttributeError en versiones móviles de Flet
+        # Corrección FilePicker Flet Mobile
         def on_file_picked(e):
-            if e.files and len(e.files) > 0:
+            if hasattr(e, 'files') and e.files and len(e.files) > 0:
                 try:
                     src_path = e.files[0].path
                     dest_path = os.path.join(EXPORT_DIR, "imported.stl")
@@ -297,8 +297,40 @@ def main(page: ft.Page):
                     lbl_stl_status.color = "red"
             page.update()
 
-        file_picker = ft.FilePicker(on_result=on_file_picked)
-        page.overlay.append(file_picker)
+        # Inicialización sin kwargs para compatibilidad universal
+        file_picker = ft.FilePicker()
+        try:
+            file_picker.on_result = on_file_picked
+            page.overlay.append(file_picker)
+        except: pass
+
+        def trigger_picker(e):
+            try:
+                file_picker.pick_files(allowed_extensions=["stl"])
+            except Exception:
+                lbl_stl_status.value = "⚠️ Explorador bloqueado. Usa la Carga Manual."
+                lbl_stl_status.color = "#FFAB00"
+                page.update()
+
+        # Sistema Fallback Manual
+        tf_stl_manual = ft.TextField(label="Nombre archivo en DB (ej: figura.stl)", expand=True, bgcolor="#0B0E14", text_size=12)
+        
+        def manual_stl_load(e):
+            fname = tf_stl_manual.value.strip()
+            if fname:
+                src_path = os.path.join(EXPORT_DIR, fname)
+                dest_path = os.path.join(EXPORT_DIR, "imported.stl")
+                if os.path.exists(src_path):
+                    try:
+                        shutil.copy(src_path, dest_path)
+                        lbl_stl_status.value = f"STL cargado desde DB: {fname}"
+                        lbl_stl_status.color = "#00E676"
+                        update_code_wrapper()
+                    except Exception as ex:
+                        lbl_stl_status.value = f"Error al cargar: {ex}"; lbl_stl_status.color = "red"
+                else:
+                    lbl_stl_status.value = f"Archivo '{fname}' no existe en pestaña DB."; lbl_stl_status.color = "#FF5252"
+            page.update()
 
         sl_stl_sc, r_stl_sc = create_slider("Escala (%)", 1, 500, 100, True)
         sl_stl_x, r_stl_x = create_slider("Mover X", -150, 150, 0, False)
@@ -307,9 +339,10 @@ def main(page: ft.Page):
 
         col_stl = ft.Column([
             ft.Text("Híbrido STL + Perforador Paramétrico", color="#00E676", weight="bold"),
-            inst("IMPORTANTE: Usa STLs Low-Poly (ideal <5k caras). Modelos complejos (>20k caras) pueden colgar el motor del navegador al hacer booleanas."),
+            inst("IMPORTANTE: Usa STLs Low-Poly (ideal <5k caras)."),
             ft.Container(content=ft.Column([
-                ft.ElevatedButton("📁 BUSCAR ARCHIVO .STL EN EL DISPOSITIVO", on_click=lambda _: file_picker.pick_files(allowed_extensions=["stl"]), bgcolor="#B388FF", color="black", width=float('inf')),
+                ft.ElevatedButton("📁 BUSCAR EN EL DISPOSITIVO", on_click=trigger_picker, bgcolor="#B388FF", color="black", width=float('inf')),
+                ft.Row([tf_stl_manual, ft.ElevatedButton("📥 CARGAR", on_click=manual_stl_load, bgcolor="#00E5FF", color="black")]),
                 lbl_stl_status,
                 r_stl_sc, r_stl_x, r_stl_y, r_stl_z
             ]), bgcolor="#161B22", padding=10, border_radius=8)
@@ -642,8 +675,8 @@ def main(page: ft.Page):
                 code += f"          if(sec==0) {{ sqx1=m; sqy1=m * Math.tan(a1); }} else if(sec==1) {{ sqx1=m/Math.tan(a1); sqy1=m; }} else if(sec==2) {{ sqx1=-m; sqy1=-m*Math.tan(a1); }} else {{ sqx1=-m/Math.tan(a1); sqy1=-m; }}\n"
                 code += f"          if(Math.abs(sqx1)>m) sqx1 = Math.sign(sqx1)*m; if(Math.abs(sqy1)>m) sqy1 = Math.sign(sqy1)*m;\n"
                 code += f"          var x_curr = sqx1*(1-t) + cx1*t; var y_curr = sqy1*(1-t) + cy1*t;\n"
-                code += f"          var x_int = (Math.abs(sqx1)>0 ? sqx1-Math.sign(sqx1)*m : 0)*(1-t) + Math.cos(a1)*(r_top-wall)*t;\n"
-                code += f"          var y_int = (Math.abs(sqy1)>0 ? sqy1-Math.sign(sqy1)*m : 0)*(1-t) + Math.sin(a1)*(r_top-wall)*t;\n"
+                code += f"          var x_int = (Math.abs(sqx1)>0 ? sqx1-Math.sign(sqx1)*wall : 0)*(1-t) + Math.cos(a1)*(r_top-wall)*t;\n"
+                code += f"          var y_int = (Math.abs(sqy1)>0 ? sqy1-Math.sign(sqy1)*wall : 0)*(1-t) + Math.sin(a1)*(r_top-wall)*t;\n"
                 code += f"          var p_ext = CSG.cylinder({{start:[x_curr, y_curr, z], end:[x_curr, y_curr, z+dz+0.1], radius:wall/2, slices:8}});\n"
                 code += f"          var p_int = CSG.cylinder({{start:[x_int, y_int, z], end:[x_int, y_int, z+dz+0.1], radius:wall/4, slices:4}});\n"
                 code += f"          if(loft_obj === null) loft_obj = p_ext; else loft_obj = loft_obj.union(p_ext);\n"
