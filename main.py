@@ -7,7 +7,7 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
 
 warnings.simplefilter("ignore", DeprecationWarning)
 
@@ -67,7 +67,7 @@ def get_lan_ip():
     except: return "127.0.0.1"
 
 # =========================================================
-# SERVIDOR LOCAL WEBGL
+# SERVIDOR LOCAL WEBGL & UPLOADER
 # =========================================================
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -104,6 +104,23 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 except Exception: pass
             self.send_response(500)
             self.end_headers()
+            
+        elif parsed.path == '/api/upload_stl':
+            content_length = int(self.headers.get('Content-Length', 0))
+            file_name = unquote(self.headers.get('File-Name', 'uploaded_file.stl'))
+            if content_length > 0:
+                try:
+                    data = self.rfile.read(content_length)
+                    filepath = os.path.join(EXPORT_DIR, file_name)
+                    with open(filepath, 'wb') as f: f.write(data)
+                    self.send_response(200)
+                    self.send_header("Access-Control-Allow-Origin", "*")
+                    self.end_headers()
+                    self.wfile.write(b'ok')
+                    return
+                except Exception as e: print(f"Error guardando subida: {e}")
+            self.send_response(500)
+            self.end_headers()
 
     def do_GET(self):
         global LATEST_CODE_B64
@@ -118,6 +135,48 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(payload.encode())
             LATEST_CODE_B64 = "" 
             
+        elif parsed.path == '/upload_ui':
+            html = """
+            <!DOCTYPE html>
+            <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>NEXUS Uploader</title></head>
+            <body style="background:#0B0E14; color:#E6EDF3; font-family:sans-serif; text-align:center; padding:20px; margin:0;">
+                <h2 style="color:#00E5FF;">🚀 Subir Archivo a NEXUS</h2>
+                <p style="color:#8B949E; font-size:14px;">Bypass de Almacenamiento Android 11+</p>
+                <div style="background:#161B22; padding:20px; border-radius:8px; border:1px solid #30363D; display:inline-block; max-width:400px; width:90%; box-sizing:border-box;">
+                    <input type="file" id="fileInput" style="margin-bottom:20px; width:100%; font-size:16px;">
+                    <button onclick="upload()" style="background:#00E676; color:black; padding:15px; font-size:16px; border:none; border-radius:8px; font-weight:bold; width:100%; cursor:pointer;">INYECCIÓN DIRECTA (SUBIR)</button>
+                    <p id="status" style="margin-top:20px; font-weight:bold; font-size:15px;"></p>
+                </div>
+                <script>
+                    function upload() {
+                        var file = document.getElementById('fileInput').files[0];
+                        if(!file) { document.getElementById('status').style.color = '#FF5252'; document.getElementById('status').innerText = '⚠️ Selecciona un archivo primero.'; return; }
+                        document.getElementById('status').style.color = '#FFAB00';
+                        document.getElementById('status').innerText = 'Subiendo ' + file.name + '...';
+                        var reader = new FileReader();
+                        reader.onload = function(e) {
+                            fetch('/api/upload_stl', {
+                                method: 'POST',
+                                headers: {'File-Name': encodeURIComponent(file.name)},
+                                body: e.target.result
+                            }).then(r => {
+                                document.getElementById('status').style.color = '#00E676';
+                                document.getElementById('status').innerHTML = '✓ ¡Subido con éxito a NEXUS!<br><br><span style="color:#FFAB00;">Vuelve a la aplicación, entra en FILES y pulsa el botón verde "📁 Nexus DB" para ver tu archivo.</span>';
+                            }).catch(err => {
+                                document.getElementById('status').style.color = '#FF5252';
+                                document.getElementById('status').innerText = 'Error: ' + err;
+                            });
+                        };
+                        reader.readAsArrayBuffer(file);
+                    }
+                </script>
+            </body></html>
+            """
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(html.encode('utf-8'))
+
         elif parsed.path.startswith('/exports/'):
             filename = parsed.path.replace('/exports/', '')
             filepath = os.path.join(EXPORT_DIR, filename)
@@ -150,12 +209,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v21.1 PRO"
+        page.title = "NEXUS CAD v21.2 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v21.1 PRO | Motor Web Nativo Integrado", color="#00E5FF", weight="bold")
+        status = ft.Text("NEXUS v21.2 PRO | Web Upload Injection Activo", color="#00E5FF", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1036,37 +1095,14 @@ def main(page: ft.Page):
                 status.value = f"⚠️ Formato .{ext} no soportado."; status.color = "#FFAB00"
             page.update()
 
-        # --- NATIVE FILE PICKER (BYPASS TERMUX FUSE) ---
-        def on_upload_progress(e):
-            if e.progress == 1.0:
-                filepath = os.path.join(EXPORT_DIR, e.file_name)
-                status.value = f"✓ Subido vía Web: {e.file_name}"
-                status.color = "#00E676"
-                page.update()
-                file_action(filepath)
-
-        def on_file_picked(e):
-            if e.files:
-                status.value = "Inyectando archivo en NEXUS..."
-                status.color = "#FFAB00"
-                page.update()
-                try:
-                    file_picker.upload([
-                        ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))
-                        for f in e.files
-                    ])
-                except Exception as ex:
-                    status.value = f"❌ Error en upload: {ex}"
-                    status.color = "red"
-                    page.update()
-
-        file_picker = ft.FilePicker(on_result=on_file_picked, on_upload=on_upload_progress)
-        page.overlay.append(file_picker)
+        def launch_uploader(e):
+            # Se abre el cargador en una pestaña del navegador
+            page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/upload_ui")
 
         btn_native_picker = ft.ElevatedButton(
-            "🚀 SELECCIONAR ARCHIVO NATIVO",
-            on_click=lambda _: file_picker.pick_files(allow_multiple=False),
-            bgcolor="#FFAB00", color="black", width=float('inf'), height=60,
+            "🚀 SUBIR ARCHIVO DESDE NAVEGADOR WEB",
+            on_click=launch_uploader,
+            bgcolor="#00E676", color="black", width=float('inf'), height=60,
             style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))
         )
 
@@ -1097,7 +1133,7 @@ def main(page: ft.Page):
                     except: sz = 0
                     list_android.controls.append(ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), subtitle=ft.Text(f"{sz} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p)))
             except Exception as ex:
-                list_android.controls.append(ft.Text(f"Restringido por Android. Usa el botón NATIVO arriba.", color="red"))
+                list_android.controls.append(ft.Text(f"Carpeta Restringida por Android.", color="red"))
                 
             tf_path.value = path
             page.update()
@@ -1132,12 +1168,10 @@ def main(page: ft.Page):
 
         view_archivos = ft.Column([
             btn_native_picker,
-            ft.Text("💡 Este botón puentea Android/Termux abriendo tu gestor de archivos directamente desde el navegador.", color="#8B949E", size=10, italic=True),
+            ft.Text("💡 Esto abrirá el navegador para que uses el selector nativo de Android. Luego, vuelve aquí y pulsa '📁 Nexus DB'.", color="#8B949E", size=10, italic=True),
             ft.Divider(color="#30363D"),
-            ft.Text("Explorador Clásico (Carpetas locales)", color="#00E5FF", weight="bold"),
             row_quick_paths,
             ft.Row([tf_path, ft.ElevatedButton("Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
-            ft.ElevatedButton("💾 GUARDAR CÓDIGO EN ESTA CARPETA", on_click=save_to_android, bgcolor="#00E676", color="black", width=float('inf')),
             ft.Container(content=list_android, expand=True, bgcolor="#161B22", border_radius=8, padding=5)
         ], expand=True)
 
@@ -1166,6 +1200,6 @@ def main(page: ft.Page):
 
 if __name__ == "__main__":
     if "TERMUX_VERSION" in os.environ:
-        ft.app(target=main, port=0, view=ft.AppView.WEB_BROWSER, upload_dir=EXPORT_DIR)
+        ft.app(target=main, port=0, view=ft.AppView.WEB_BROWSER)
     else:
-        ft.app(target=main, upload_dir=EXPORT_DIR)
+        ft.app(target=main)
