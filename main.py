@@ -151,12 +151,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.7 PRO"
+        page.title = "NEXUS CAD v20.8 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.7 PRO | Explorador Android Estable", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.8 PRO | Explorador Escaneo Profundo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -407,7 +407,7 @@ def main(page: ft.Page):
             
             elif h == "stl":
                 sc = sl_stl_sc.value / 100.0
-                code += f"  // BYPASS HÍBRIDO AVANZADO (V20.7) - Soporte Multi-Body\n"
+                code += f"  // BYPASS HÍBRIDO AVANZADO (V20.8) - Soporte Multi-Body\n"
                 code += f"  var sc = {sc}; var tx = {sl_stl_x.value}; var ty = {sl_stl_y.value}; var tz = {sl_stl_z.value};\n"
                 code += f"  var stlParts = Array.isArray(IMPORTED_STL) ? IMPORTED_STL : [IMPORTED_STL];\n"
                 code += f"  var finalPolys = [];\n"
@@ -1007,11 +1007,29 @@ def main(page: ft.Page):
         ], expand=True, scroll="auto")
         
         # =========================================================
-        # PESTAÑA FILES: EXPLORADOR ANDROID NATIVO (MODO EMOJI SEGURO)
+        # PESTAÑA FILES: EXPLORADOR ANDROID NATIVO (MODO PROFUNDO)
         # =========================================================
         current_android_dir = ANDROID_ROOT
         tf_path = ft.TextField(value=current_android_dir, expand=True, bgcolor="#161B22", height=40, text_size=12)
         list_android = ft.ListView(expand=True, spacing=5)
+
+        # ⚠️ SOLUCIÓN ANDROID 11+ (Muestra un panel informativo si oculta los archivos)
+        banner_permisos = ft.ExpansionTile(
+            title=ft.Text("⚠️ ¿No ves tus archivos .stl? (Solución)", color="#FF5252", weight="bold", size=12),
+            icon_color="#FF5252", collapsed_text_color="#FF5252", text_color="#FF5252",
+            controls=[
+                ft.Container(
+                    content=ft.Column([
+                        ft.Text("Android 11+ oculta los archivos 3D a Termux por defecto. Para hacerlos visibles y que funcione tu Explorador:", color="#E6EDF3", size=11),
+                        ft.Text("1. Ve a los Ajustes de Android > Aplicaciones > Termux.", color="#FFD54F", size=11),
+                        ft.Text("2. Toca en 'Permisos' > 'Archivos y contenido multimedia'.", color="#FFD54F", size=11),
+                        ft.Text("3. Marca 'Permitir administrar todos los archivos'.", color="#FFD54F", size=11),
+                        ft.Text("Al hacerlo, tus .stl aparecerán instantáneamente abajo.", color="#00E676", size=11, weight="bold"),
+                    ]),
+                    padding=10, bgcolor="#2A1B1C", border_radius=8
+                )
+            ]
+        )
 
         def file_action(filepath):
             ext = filepath.lower().split('.')[-1] if '.' in filepath else ''
@@ -1041,11 +1059,19 @@ def main(page: ft.Page):
             list_android.controls.clear()
             try:
                 items = os.listdir(path)
-                dirs = [d for d in items if os.path.isdir(os.path.join(path, d))]
-                files = [f for f in items if os.path.isfile(os.path.join(path, f))]
-                dirs.sort(); files.sort()
+                dirs = []
+                files = []
+                # Bypass agresivo de os.path.isfile para evadir bloqueos silenciosos de Android
+                for item in items:
+                    p = os.path.join(path, item)
+                    if os.path.isdir(p):
+                        dirs.append(item)
+                    else:
+                        files.append(item)
+                        
+                dirs.sort()
+                files.sort()
                 
-                # Usamos Text("⬆️") en vez de ft.Icon(ft.icons.ARROW_UPWARD) para evitar el crash de Flet en Termux
                 if path != "/" and path != "/storage" and path != "/storage/emulated":
                     list_android.controls.append(
                         ft.ListTile(leading=ft.Text("⬆️", size=24), title=ft.Text(".. (Subir nivel)", color="white"), on_click=lambda e: nav_to(os.path.dirname(path)))
@@ -1063,11 +1089,16 @@ def main(page: ft.Page):
                     if ext == "stl": icon = "🧊"; color = "#00E676"
                     elif ext == "jscad": icon = "🧩"; color = "#00E5FF"
                     
+                    try:
+                        sz = os.path.getsize(os.path.join(path, f)) // 1024
+                    except:
+                        sz = 0
+                        
                     list_android.controls.append(
-                        ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), subtitle=ft.Text(f"{os.path.getsize(os.path.join(path, f)) // 1024} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p))
+                        ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), subtitle=ft.Text(f"{sz} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p))
                     )
             except PermissionError:
-                list_android.controls.append(ft.Text("❌ Permiso Denegado por Android. Ve a Termux y escribe 'termux-setup-storage' y dale permisos.", color="red", weight="bold"))
+                list_android.controls.append(ft.Text("❌ Permiso Denegado. Mira las instrucciones arriba.", color="red", weight="bold"))
             except Exception as ex:
                 list_android.controls.append(ft.Text(f"Error accediendo a carpeta: {ex}", color="red"))
                 
@@ -1104,7 +1135,7 @@ def main(page: ft.Page):
 
         view_archivos = ft.Column([
             ft.Text("Explorador de Dispositivo (Android Native)", color="#00E5FF", weight="bold"),
-            ft.Text("Navega por tu móvil. Toca un .stl para el Híbrido, o .jscad para Editar.", size=10, color="#8B949E"),
+            banner_permisos,
             row_quick_paths,
             ft.Row([tf_path, ft.ElevatedButton("Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
             ft.ElevatedButton("💾 GUARDAR CÓDIGO EN ESTA CARPETA", on_click=save_to_android, bgcolor="#00E676", color="black", width=float('inf')),
