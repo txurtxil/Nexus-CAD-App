@@ -150,12 +150,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v21.0 PRO"
+        page.title = "NEXUS CAD v21.1 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v21.0 PRO | Motor Web Nativo Integrado", color="#00E5FF", weight="bold")
+        status = ft.Text("NEXUS v21.1 PRO | Motor Web Nativo Integrado", color="#00E5FF", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1037,7 +1037,7 @@ def main(page: ft.Page):
             page.update()
 
         # --- NATIVE FILE PICKER (BYPASS TERMUX FUSE) ---
-        def on_upload_progress(e: ft.FilePickerUploadEvent):
+        def on_upload_progress(e):
             if e.progress == 1.0:
                 filepath = os.path.join(EXPORT_DIR, e.file_name)
                 status.value = f"✓ Subido vía Web: {e.file_name}"
@@ -1045,16 +1045,20 @@ def main(page: ft.Page):
                 page.update()
                 file_action(filepath)
 
-        def on_file_picked(e: ft.FilePickerResultEvent):
+        def on_file_picked(e):
             if e.files:
                 status.value = "Inyectando archivo en NEXUS..."
                 status.color = "#FFAB00"
                 page.update()
-                # El navegador enviará el archivo al EXPORT_DIR configurado en ft.app
-                file_picker.upload([
-                    ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))
-                    for f in e.files
-                ])
+                try:
+                    file_picker.upload([
+                        ft.FilePickerUploadFile(f.name, upload_url=page.get_upload_url(f.name, 600))
+                        for f in e.files
+                    ])
+                except Exception as ex:
+                    status.value = f"❌ Error en upload: {ex}"
+                    status.color = "red"
+                    page.update()
 
         file_picker = ft.FilePicker(on_result=on_file_picked, on_upload=on_upload_progress)
         page.overlay.append(file_picker)
@@ -1161,7 +1165,6 @@ def main(page: ft.Page):
         page.clean(); page.add(ft.Container(ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red"), padding=50)); page.update()
 
 if __name__ == "__main__":
-    # La clave para que la inyección web funcione es el parámetro upload_dir
     if "TERMUX_VERSION" in os.environ:
         ft.app(target=main, port=0, view=ft.AppView.WEB_BROWSER, upload_dir=EXPORT_DIR)
     else:
