@@ -143,12 +143,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.4 PRO"
+        page.title = "NEXUS CAD v20.5 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.4 PRO | Worker Optimizado", color="#00E5FF", weight="bold")
+        status = ft.Text("NEXUS v20.5 PRO | Bypass STL Universal", color="#00E5FF", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -193,8 +193,7 @@ def main(page: ft.Page):
         sl_g_tol, r_g_tol = create_slider("Tol. Global (G_TOL)", 0.0, 2.0, 0.2, False)
 
         def prepare_js_payload():
-            # Inyección IN-FUNCTION: Los workers extraen function main() ignorando lo de fuera.
-            # Metemos las variables paramétricas justo al inicio de la función main para evitar el "GW is not defined"
+            # INYECCIÓN INTELIGENTE: Pone las variables dentro del function main()
             header = f"  var GW = {sl_g_w.value}; var GL = {sl_g_l.value}; var GH = {sl_g_h.value}; var GT = {sl_g_t.value}; var G_TOL = {sl_g_tol.value};\n"
             c = txt_code.value
             if "function main() {" in c:
@@ -540,14 +539,16 @@ def main(page: ft.Page):
             
             elif h == "stl":
                 sc = sl_stl_sc.value / 100.0
-                code += f"  // BYPASS HÍBRIDO (Elude el bug nativo de Matrix.scaling del JS Engine)\n"
+                code += f"  // BYPASS HÍBRIDO (Resuelve errores de Matrix.scaling y constructores de Vector variables)\n"
                 code += f"  var sc = {sc}; var tx = {sl_stl_x.value}; var ty = {sl_stl_y.value}; var tz = {sl_stl_z.value};\n"
                 code += f"  var polys = IMPORTED_STL.polygons || IMPORTED_STL.toPolygons();\n"
                 code += f"  var newPolys = polys.map(function(p) {{\n"
                 code += f"      var newVerts = p.vertices.map(function(v) {{\n"
+                code += f"          // Detector dinámico de la clase de vector según el motor JS-CSG activo:\n"
+                code += f"          var VecClass = typeof CSG.Vector !== 'undefined' ? CSG.Vector : CSG.Vector3D;\n"
                 code += f"          return new CSG.Vertex(\n"
-                code += f"              new CSG.Vector3D(v.pos.x * sc + tx, v.pos.y * sc + ty, v.pos.z * sc + tz),\n"
-                code += f"              new CSG.Vector3D(v.normal.x, v.normal.y, v.normal.z)\n"
+                code += f"              new VecClass(v.pos.x * sc + tx, v.pos.y * sc + ty, v.pos.z * sc + tz),\n"
+                code += f"              new VecClass(v.normal.x, v.normal.y, v.normal.z)\n"
                 code += f"          );\n"
                 code += f"      }});\n"
                 code += f"      return new CSG.Polygon(newVerts, p.shared);\n"
