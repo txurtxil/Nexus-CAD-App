@@ -142,7 +142,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 
         elif parsed.path == '/imported.stl':
             filepath = os.path.join(EXPORT_DIR, "imported.stl")
-            # FIX: Evitar el error "ProgressEvent" devolviendo un STL Dummy válido si no existe archivo real.
             if os.path.exists(filepath):
                 try:
                     if os.path.getsize(filepath) > 84:
@@ -181,12 +180,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.15 TITAN"
+        page.title = "NEXUS CAD v20.16 TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text(value="NEXUS v20.15 TITAN | Materiales y Fixes Activos", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.16 TITAN | UI Fixes Activos", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -213,7 +212,7 @@ def main(page: ft.Page):
         def update_code_wrapper(e=None): generate_param_code()
 
         def create_slider(label, min_v, max_v, val, is_int):
-            txt_val = ft.Text(value=f"{int(val) if is_int else val:.1f}", color="#00E5FF", width=45, text_align="right", size=13, weight="bold")
+            txt_val = ft.Text(f"{int(val) if is_int else val:.1f}", color="#00E5FF", width=45, text_align="right", size=13, weight="bold")
             sl = ft.Slider(min=min_v, max=max_v, value=val, expand=True, active_color="#00E5FF", inactive_color="#2A303C")
             if is_int: sl.divisions = int(max_v - min_v)
             def internal_change(e):
@@ -221,7 +220,7 @@ def main(page: ft.Page):
                 txt_val.update(); 
                 if not modo_ensamble: update_code_wrapper()
             sl.on_change = internal_change
-            return sl, ft.Row([ft.Text(value=label, width=110, size=12, color="#E6EDF3"), sl, txt_val])
+            return sl, ft.Row([ft.Text(label, width=110, size=12, color="#E6EDF3"), sl, txt_val])
 
         # === PARAMETROS GLOBALES ===
         sl_g_w, r_g_w = create_slider("Ancho (GW)", 1, 300, 50, False)
@@ -234,13 +233,13 @@ def main(page: ft.Page):
         # NUEVO MENÚ MATERIALES
         dd_mat = ft.Dropdown(
             options=[
-                ft.dropdown.Option(text="PLA Gris Mate"),
-                ft.dropdown.Option(text="PETG Transparente"),
-                ft.dropdown.Option(text="Fibra de Carbono"),
-                ft.dropdown.Option(text="Aluminio Mecanizado"),
-                ft.dropdown.Option(text="Madera Bambú"),
-                ft.dropdown.Option(text="Oro Puro"),
-                ft.dropdown.Option(text="Neón Cyan")
+                ft.dropdown.Option("PLA Gris Mate"),
+                ft.dropdown.Option("PETG Transparente"),
+                ft.dropdown.Option("Fibra de Carbono"),
+                ft.dropdown.Option("Aluminio Mecanizado"),
+                ft.dropdown.Option("Madera Bambú"),
+                ft.dropdown.Option("Oro Puro"),
+                ft.dropdown.Option("Neón Cyan")
             ],
             value="PLA Gris Mate", bgcolor="#161B22", color="#00E5FF", expand=True, text_size=12
         )
@@ -258,7 +257,6 @@ def main(page: ft.Page):
             }
             c_val = mat_colors.get(dd_mat.value, "[0.5, 0.5, 0.5, 1.0]")
             
-            # FIX: Inyección de bloque UTILS a prueba de fallos matemáticos
             header = f"  var GW = {sl_g_w.value}; var GL = {sl_g_l.value}; var GH = {sl_g_h.value}; var GT = {sl_g_t.value}; var G_TOL = {sl_g_tol.value}; var KINE_T = {sl_kine.value}; var MAT_C = {c_val};\n"
             utils_block = "  var UTILS = { rotZ: function(o, d) { try { return o.rotateZ(d); } catch(e) { try { return o.rotate([0,0,0],[0,0,1],d); } catch(e2) { return o; } } }, rotX: function(o, d) { try { return o.rotateX(d); } catch(e) { try { return o.rotate([0,0,0],[1,0,0],d); } catch(e2) { return o; } } }, rotY: function(o, d) { try { return o.rotateY(d); } catch(e) { try { return o.rotate([0,0,0],[0,1,0],d); } catch(e2) { return o; } } }, scale: function(o, v) { try { return o.scale(v); } catch(e) { return o; } }, mat: function(o) { try { if(typeof o.setColor === 'function') return o.setColor(MAT_C); } catch(e) {} return o; } };\n"
             header += utils_block
@@ -280,9 +278,9 @@ def main(page: ft.Page):
             LATEST_NEEDS_STL = ("IMPORTED_STL" in js_payload) or herramienta_actual.startswith("stl")
             set_tab(2); page.update()
 
-        help_box = ft.ExpansionTile(title=ft.Text(value="💡 Ayuda Rápida y Plantilla para IA", color="#00E5FF", weight="bold", size=12), collapsed_text_color="#00E5FF", text_color="#00E5FF", icon_color="#00E5FF", controls=[ft.Container(padding=10, bgcolor="#161B22", border_radius=8, content=ft.Column([ft.Text(value="📝 REGLAS DEL MOTOR:", weight="bold", color="#8B949E", size=11), ft.Text(value="1. Función principal 'function main(params) { ... }'.\n2. Devolver pieza usando 'return UTILS.mat(objeto);'.\n3. Usar transformaciones seguras: UTILS.rotZ(obj, deg) o UTILS.scale(obj, [1,1,1]).", size=11, color="#E6EDF3")]))])
+        help_box = ft.ExpansionTile(title=ft.Text("💡 Ayuda Rápida y Plantilla para IA", color="#00E5FF", weight="bold", size=12), collapsed_text_color="#00E5FF", text_color="#00E5FF", icon_color="#00E5FF", controls=[ft.Container(padding=10, bgcolor="#161B22", border_radius=8, content=ft.Column([ft.Text("📝 REGLAS DEL MOTOR:", weight="bold", color="#8B949E", size=11), ft.Text("1. Función principal 'function main(params) { ... }'.\n2. Devolver pieza usando 'return UTILS.mat(objeto);'.\n3. Usar transformaciones seguras: UTILS.rotZ(obj, deg) o UTILS.scale(obj, [1,1,1]).", size=11, color="#E6EDF3")]))])
 
-        row_snippets = ft.Row([ft.Text(value="Snippets:", color="#8B949E", size=12), ft.ElevatedButton(text="+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[GW/2, GL/2, GH/2]});"), bgcolor="#21262D", color="white"), ft.ElevatedButton(text="+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:32});"), bgcolor="#21262D", color="white")], scroll="auto")
+        row_snippets = ft.Row([ft.Text("Snippets:", color="#8B949E", size=12), ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[GW/2, GL/2, GH/2]});"), bgcolor="#21262D", color="white"), ft.ElevatedButton("+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:32});"), bgcolor="#21262D", color="white")], scroll="auto")
 
         sw_ensamble = ft.Switch(label="Activar Ensamblador", value=False, active_color="#FFAB00")
         def toggle_ensamble(e):
@@ -322,88 +320,88 @@ def main(page: ft.Page):
             txt_code.value = final_code; txt_code.update(); page.update()
 
         panel_ensamble_ops = ft.Row([
-            ft.ElevatedButton(text="➕ UNIR", on_click=lambda _: add_to_stack("union"), bgcolor="#1B5E20", color="white", expand=True),
-            ft.ElevatedButton(text="➖ RESTAR", on_click=lambda _: add_to_stack("subtract"), bgcolor="#B71C1C", color="white", expand=True)
+            ft.ElevatedButton("➕ UNIR", on_click=lambda _: add_to_stack("union"), bgcolor="#1B5E20", color="white", expand=True),
+            ft.ElevatedButton("➖ RESTAR", on_click=lambda _: add_to_stack("subtract"), bgcolor="#B71C1C", color="white", expand=True)
         ], visible=False)
 
         panel_globales = ft.Container(content=ft.Column([
-            ft.Row([ft.Text(value="🌐 PARÁMETROS GLOBALES", color="#00E5FF", weight="bold", size=11), sw_ensamble], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
+            ft.Row([ft.Text("🌐 PARÁMETROS GLOBALES", color="#00E5FF", weight="bold", size=11), sw_ensamble], alignment=ft.MainAxisAlignment.SPACE_BETWEEN), 
             r_g_w, r_g_l, r_g_h, r_g_t, r_g_tol,
             ft.Divider(color="#333333"),
-            ft.Row([ft.Text(value="🎨 TEXTURA / RENDER:", color="#E6EDF3", size=11, width=130), dd_mat]),
+            ft.Row([ft.Text("🎨 TEXTURA / RENDER:", color="#E6EDF3", size=11, width=130), dd_mat]),
             ft.Divider(color="#333333"),
-            ft.Text(value="🎬 CINEMÁTICA INTERACTIVA", color="#B388FF", weight="bold", size=11),
+            ft.Text("🎬 CINEMÁTICA INTERACTIVA", color="#B388FF", weight="bold", size=11),
             r_kine,
             panel_ensamble_ops
         ]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#333333"))
 
-        col_custom = ft.Column([ft.Text(value="Modo Código Libre (Edita en la pestaña CODE)", color="#00E676")], visible=True)
-        def inst(texto): return ft.Text(value="ℹ️ " + texto, color="#FFD54F", size=11, italic=True)
+        col_custom = ft.Column([ft.Text("Modo Código Libre (Edita en la pestaña CODE)", color="#00E676")], visible=True)
+        def inst(texto): return ft.Text("ℹ️ " + texto, color="#FFD54F", size=11, italic=True)
 
         # =========================================================
         # HERRAMIENTAS Y PANELES BÁSICOS
         # =========================================================
-        tf_sketch_pts = ft.TextField(label="Coordenadas (X, Y) - Una por línea", value="0,0\n50,0\n50,20\n25,40\n0,20", multiline=True, height=150, bgcolor="#161B22", color="#00E5FF"); tf_sketch_pts.on_change = update_code_wrapper; sl_sketch_h, r_sketch_h = create_slider("Altura (Z)", 1, 300, 20, False); col_sketcher = ft.Column([ft.Text(value="Sketcher 2D / Extrusor Libre", color="#2962FF", weight="bold"), inst("Pega una tabla de coordenadas de Excel (separadas por espacio, tabulación o comas). ¡El motor las convierte en 3D automáticamente!"), ft.Container(content=ft.Column([tf_sketch_pts, r_sketch_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        tf_sketch_pts = ft.TextField(label="Coordenadas (X, Y) - Una por línea", value="0,0\n50,0\n50,20\n25,40\n0,20", multiline=True, height=150, bgcolor="#161B22", color="#00E5FF"); tf_sketch_pts.on_change = update_code_wrapper; sl_sketch_h, r_sketch_h = create_slider("Altura (Z)", 1, 300, 20, False); col_sketcher = ft.Column([ft.Text("Sketcher 2D / Extrusor Libre", color="#2962FF", weight="bold"), inst("Pega una tabla de coordenadas de Excel (separadas por espacio, tabulación o comas). ¡El motor las convierte en 3D automáticamente!"), ft.Container(content=ft.Column([tf_sketch_pts, r_sketch_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        lbl_stl_status = ft.Text(value="Ningún STL cargado aún en memoria.", color="#8B949E", size=11)
+        lbl_stl_status = ft.Text("Ningún STL cargado aún en memoria.", color="#8B949E", size=11)
         sl_stl_sc, r_stl_sc = create_slider("Escala (%)", 1, 500, 100, True); sl_stl_x, r_stl_x = create_slider("Mover X", -150, 150, 0, False); sl_stl_y, r_stl_y = create_slider("Mover Y", -150, 150, 0, False); sl_stl_z, r_stl_z = create_slider("Mover Z", -150, 150, 0, False)
-        panel_stl_transform = ft.Container(content=ft.Column([ft.Row([ft.Text(value="🔄 TRANSFORMACIÓN BASE STL", color="#00E676", weight="bold"), lbl_stl_status]), ft.ElevatedButton(text="📂 IR A FILES PARA CARGAR UN STL", on_click=lambda _: set_tab(3), bgcolor="#00E5FF", color="black", width=float('inf')), inst("El Motor Híbrido soldará automáticamente piezas multi-body."), r_stl_sc, r_stl_x, r_stl_y, r_stl_z]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"), visible=False)
+        panel_stl_transform = ft.Container(content=ft.Column([ft.Row([ft.Text("🔄 TRANSFORMACIÓN BASE STL", color="#00E676", weight="bold"), lbl_stl_status]), ft.ElevatedButton("📂 IR A FILES PARA CARGAR UN STL", on_click=lambda _: set_tab(3), bgcolor="#00E5FF", color="black", width=float('inf')), inst("El Motor Híbrido soldará automáticamente piezas multi-body."), r_stl_sc, r_stl_x, r_stl_y, r_stl_z]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"), visible=False)
 
-        col_stl = ft.Column([ft.Text(value="Visor STL Original", color="#00E676", weight="bold")], visible=False)
-        sl_stlf_z, r_stlf_z = create_slider("Corte Z (mm)", 0, 50, 1, False); col_stl_flatten = ft.Column([ft.Text(value="Aplanar Base (Flatten)", color="#00E676", weight="bold"), r_stlf_z], visible=False)
-        dd_stls_axis = ft.Dropdown(options=[ft.dropdown.Option(text="X"), ft.dropdown.Option(text="Y"), ft.dropdown.Option(text="Z")], value="Z", bgcolor="#1E1E1E"); dd_stls_axis.on_change = update_code_wrapper; sl_stls_pos, r_stls_pos = create_slider("Punto Corte", -150, 150, 0, False); col_stl_split = ft.Column([ft.Text(value="Cortador Avanzado (Split XYZ)", color="#00E676", weight="bold"), dd_stls_axis, r_stls_pos], visible=False)
-        sl_stlc_s, r_stlc_s = create_slider("Caja Tamaño", 10, 300, 50, False); col_stl_crop = ft.Column([ft.Text(value="Aislar Objeto (Crop Box)", color="#00E676", weight="bold"), r_stlc_s], visible=False)
-        dd_stld_axis = ft.Dropdown(options=[ft.dropdown.Option(text="X"), ft.dropdown.Option(text="Y"), ft.dropdown.Option(text="Z")], value="Z", bgcolor="#1E1E1E"); dd_stld_axis.on_change = update_code_wrapper; sl_stld_r, r_stld_r = create_slider("Radio Perfo. (M3=1.6)", 0.5, 20, 1.6, False); sl_stld_px, r_stld_px = create_slider("Coord 1", -150, 150, 0, False); sl_stld_py, r_stld_py = create_slider("Coord 2", -150, 150, 0, False); col_stl_drill = ft.Column([ft.Text(value="Taladro 3D Universal", color="#00E676", weight="bold"), dd_stld_axis, r_stld_r, r_stld_px, r_stld_py], visible=False)
-        sl_stlm_w, r_stlm_w = create_slider("Ancho Orejeta", 10, 100, 40, False); sl_stlm_d, r_stlm_d = create_slider("Separación Ext.", 20, 200, 80, False); col_stl_mount = ft.Column([ft.Text(value="Orejetas de Montaje (Screw Tabs)", color="#00E676", weight="bold"), r_stlm_w, r_stlm_d], visible=False)
-        sl_stle_r, r_stle_r = create_slider("Radio Disco", 5, 30, 15, False); sl_stle_d, r_stle_d = create_slider("Apertura XY", 10, 200, 50, False); col_stl_ears = ft.Column([ft.Text(value="Discos Anti-Warping (Mouse Ears)", color="#00E676", weight="bold"), r_stle_r, r_stle_d], visible=False)
-        sl_stlp_sx, r_stlp_sx = create_slider("Largo Parche X", 5, 100, 20, False); sl_stlp_sy, r_stlp_sy = create_slider("Ancho Parche Y", 5, 100, 20, False); sl_stlp_sz, r_stlp_sz = create_slider("Alto Parche Z", 1, 50, 5, False); col_stl_patch = ft.Column([ft.Text(value="Parche de Refuerzo de Bloque", color="#00E676", weight="bold"), r_stlp_sx, r_stlp_sy, r_stlp_sz], visible=False)
-        sl_stlh_r, r_stlh_r = create_slider("Tamaño Hexágono", 2, 20, 5, False); col_stl_honeycomb = ft.Column([ft.Text(value="Aligerado Honeycomb Paramétrico", color="#00E676", weight="bold"), r_stlh_r], visible=False)
-        sl_stlpg_r, r_stlpg_r = create_slider("Radio Hélice", 10, 100, 40, False); sl_stlpg_t, r_stlpg_t = create_slider("Grosor Aro", 1, 10, 3, False); sl_stlpg_x, r_stlpg_x = create_slider("Centro Aro X", -100, 100, 0, False); sl_stlpg_y, r_stlpg_y = create_slider("Centro Aro Y", -100, 100, 0, False); col_stl_propguard = ft.Column([ft.Text(value="Protector de Hélice (Prop-Guard)", color="#00E676", weight="bold"), r_stlpg_r, r_stlpg_t, r_stlpg_x, r_stlpg_y], visible=False)
+        col_stl = ft.Column([ft.Text("Visor STL Original", color="#00E676", weight="bold")], visible=False)
+        sl_stlf_z, r_stlf_z = create_slider("Corte Z (mm)", 0, 50, 1, False); col_stl_flatten = ft.Column([ft.Text("Aplanar Base (Flatten)", color="#00E676", weight="bold"), r_stlf_z], visible=False)
+        dd_stls_axis = ft.Dropdown(options=[ft.dropdown.Option("X"), ft.dropdown.Option("Y"), ft.dropdown.Option("Z")], value="Z", bgcolor="#1E1E1E"); dd_stls_axis.on_change = update_code_wrapper; sl_stls_pos, r_stls_pos = create_slider("Punto Corte", -150, 150, 0, False); col_stl_split = ft.Column([ft.Text("Cortador Avanzado (Split XYZ)", color="#00E676", weight="bold"), dd_stls_axis, r_stls_pos], visible=False)
+        sl_stlc_s, r_stlc_s = create_slider("Caja Tamaño", 10, 300, 50, False); col_stl_crop = ft.Column([ft.Text("Aislar Objeto (Crop Box)", color="#00E676", weight="bold"), r_stlc_s], visible=False)
+        dd_stld_axis = ft.Dropdown(options=[ft.dropdown.Option("X"), ft.dropdown.Option("Y"), ft.dropdown.Option("Z")], value="Z", bgcolor="#1E1E1E"); dd_stld_axis.on_change = update_code_wrapper; sl_stld_r, r_stld_r = create_slider("Radio Perfo. (M3=1.6)", 0.5, 20, 1.6, False); sl_stld_px, r_stld_px = create_slider("Coord 1", -150, 150, 0, False); sl_stld_py, r_stld_py = create_slider("Coord 2", -150, 150, 0, False); col_stl_drill = ft.Column([ft.Text("Taladro 3D Universal", color="#00E676", weight="bold"), dd_stld_axis, r_stld_r, r_stld_px, r_stld_py], visible=False)
+        sl_stlm_w, r_stlm_w = create_slider("Ancho Orejeta", 10, 100, 40, False); sl_stlm_d, r_stlm_d = create_slider("Separación Ext.", 20, 200, 80, False); col_stl_mount = ft.Column([ft.Text("Orejetas de Montaje (Screw Tabs)", color="#00E676", weight="bold"), r_stlm_w, r_stlm_d], visible=False)
+        sl_stle_r, r_stle_r = create_slider("Radio Disco", 5, 30, 15, False); sl_stle_d, r_stle_d = create_slider("Apertura XY", 10, 200, 50, False); col_stl_ears = ft.Column([ft.Text("Discos Anti-Warping (Mouse Ears)", color="#00E676", weight="bold"), r_stle_r, r_stle_d], visible=False)
+        sl_stlp_sx, r_stlp_sx = create_slider("Largo Parche X", 5, 100, 20, False); sl_stlp_sy, r_stlp_sy = create_slider("Ancho Parche Y", 5, 100, 20, False); sl_stlp_sz, r_stlp_sz = create_slider("Alto Parche Z", 1, 50, 5, False); col_stl_patch = ft.Column([ft.Text("Parche de Refuerzo de Bloque", color="#00E676", weight="bold"), r_stlp_sx, r_stlp_sy, r_stlp_sz], visible=False)
+        sl_stlh_r, r_stlh_r = create_slider("Tamaño Hexágono", 2, 20, 5, False); col_stl_honeycomb = ft.Column([ft.Text("Aligerado Honeycomb Paramétrico", color="#00E676", weight="bold"), r_stlh_r], visible=False)
+        sl_stlpg_r, r_stlpg_r = create_slider("Radio Hélice", 10, 100, 40, False); sl_stlpg_t, r_stlpg_t = create_slider("Grosor Aro", 1, 10, 3, False); sl_stlpg_x, r_stlpg_x = create_slider("Centro Aro X", -100, 100, 0, False); sl_stlpg_y, r_stlpg_y = create_slider("Centro Aro Y", -100, 100, 0, False); col_stl_propguard = ft.Column([ft.Text("Protector de Hélice (Prop-Guard)", color="#00E676", weight="bold"), r_stlpg_r, r_stlpg_t, r_stlpg_x, r_stlpg_y], visible=False)
 
         tf_texto = ft.TextField(label="Escribe Texto", value="NEXUS", max_length=15, bgcolor="#161B22")
-        dd_txt_estilo = ft.Dropdown(options=[ft.dropdown.Option(text="Voxel Fino"), ft.dropdown.Option(text="Voxel Grueso"), ft.dropdown.Option(text="Braille")], value="Voxel Grueso", expand=True, bgcolor="#161B22")
-        dd_txt_base = ft.Dropdown(options=[ft.dropdown.Option(text="Solo Texto"), ft.dropdown.Option(text="Llavero (Anilla)"), ft.dropdown.Option(text="Placa Atornillable"), ft.dropdown.Option(text="Soporte de Mesa"), ft.dropdown.Option(text="Colgante Militar"), ft.dropdown.Option(text="Placa Ovalada")], value="Colgante Militar", expand=True, bgcolor="#161B22")
+        dd_txt_estilo = ft.Dropdown(options=[ft.dropdown.Option("Voxel Fino"), ft.dropdown.Option("Voxel Grueso"), ft.dropdown.Option("Braille")], value="Voxel Grueso", expand=True, bgcolor="#161B22")
+        dd_txt_base = ft.Dropdown(options=[ft.dropdown.Option("Solo Texto"), ft.dropdown.Option("Llavero (Anilla)"), ft.dropdown.Option("Placa Atornillable"), ft.dropdown.Option("Soporte de Mesa"), ft.dropdown.Option("Colgante Militar"), ft.dropdown.Option("Placa Ovalada")], value="Colgante Militar", expand=True, bgcolor="#161B22")
         sw_txt_grabado = ft.Switch(label="Texto Grabado (Hueco)", value=False, active_color="#00E5FF")
         tf_texto.on_change = update_code_wrapper; dd_txt_estilo.on_change = update_code_wrapper; dd_txt_base.on_change = update_code_wrapper; sw_txt_grabado.on_change = update_code_wrapper
-        col_texto = ft.Column([ft.Text(value="Tipografía y Placas Especiales", color="#880E4F", weight="bold"), inst("GH define el grosor de la placa. 'Grabado' hunde el texto en el material."), ft.Container(content=ft.Column([tf_texto, ft.Row([dd_txt_estilo, dd_txt_base]), sw_txt_grabado]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        col_texto = ft.Column([ft.Text("Tipografía y Placas Especiales", color="#880E4F", weight="bold"), inst("GH define el grosor de la placa. 'Grabado' hunde el texto en el material."), ft.Container(content=ft.Column([tf_texto, ft.Row([dd_txt_estilo, dd_txt_base]), sw_txt_grabado]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-        sl_las_x, r_las_x = create_slider("Ancho Objeto", 10, 200, 50, False); sl_las_y, r_las_y = create_slider("Largo Objeto", 10, 200, 50, False); sl_las_z, r_las_z = create_slider("Altura Z Corte", 0, 100, 5, False); col_laser = ft.Column([ft.Text(value="Perfil Láser", color="#D50000"), inst("Secciona cualquier modelo 3D en Z. Obten un perfil plano."), ft.Container(content=ft.Column([r_las_x, r_las_y, r_las_z]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_alin_f, r_alin_f = create_slider("Filas (Y)", 1, 10, 3, True); sl_alin_c, r_alin_c = create_slider("Columnas (X)", 1, 10, 3, True); sl_alin_dx, r_alin_dx = create_slider("Distancia X", 5, 100, 20, False); sl_alin_dy, r_alin_dy = create_slider("Distancia Y", 5, 100, 20, False); sl_alin_h, r_alin_h = create_slider("Altura Base", 2, 50, 10, False); col_array_lin = ft.Column([ft.Text(value="Matriz Lineal Grid", color="#00B0FF"), ft.Container(content=ft.Column([r_alin_f, r_alin_c, r_alin_dx, r_alin_dy, r_alin_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_apol_n, r_apol_n = create_slider("Repeticiones", 2, 36, 8, True); sl_apol_r, r_apol_r = create_slider("Radio Corona", 10, 150, 40, False); sl_apol_rp, r_apol_rp = create_slider("Radio Pieza", 2, 20, 5, False); sl_apol_h, r_apol_h = create_slider("Grosor (Z)", 2, 50, 5, False); col_array_pol = ft.Column([ft.Text(value="Matriz Polar Circular", color="#00B0FF"), ft.Container(content=ft.Column([r_apol_n, r_apol_r, r_apol_rp, r_apol_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_loft_w, r_loft_w = create_slider("Ancho Base SQ", 10, 150, 60, False); sl_loft_r, r_loft_r = create_slider("Radio Top", 5, 100, 20, False); sl_loft_h, r_loft_h = create_slider("Altura Z", 10, 200, 80, False); sl_loft_g, r_loft_g = create_slider("Grosor Pared", 1, 10, 2, False); col_loft = ft.Column([ft.Text(value="Lofting Adaptador", color="#D50000"), ft.Container(content=ft.Column([r_loft_w, r_loft_r, r_loft_h, r_loft_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_pan_x, r_pan_x = create_slider("Ancho X", 20, 200, 80, False); sl_pan_y, r_pan_y = create_slider("Largo Y", 20, 200, 80, False); sl_pan_z, r_pan_z = create_slider("Alto Z", 2, 50, 10, False); sl_pan_r, r_pan_r = create_slider("Radio Hex", 2, 20, 5, False); col_panal = ft.Column([ft.Text(value="Panal Honeycomb", color="#FBC02D"), ft.Container(content=ft.Column([r_pan_x, r_pan_y, r_pan_z, r_pan_r]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_vor_ro, r_vor_ro = create_slider("Radio Ext", 10, 100, 40, False); sl_vor_ri, r_vor_ri = create_slider("Radio Int", 5, 95, 35, False); sl_vor_h, r_vor_h = create_slider("Altura Tubo", 20, 200, 100, False); sl_vor_d, r_vor_d = create_slider("Densidad Red", 4, 24, 12, True); col_voronoi = ft.Column([ft.Text(value="Carcasa Voronoi", color="#FBC02D"), ft.Container(content=ft.Column([r_vor_ro, r_vor_ri, r_vor_h, r_vor_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_evo_d, r_evo_d = create_slider("Nº Dientes", 8, 60, 20, True); sl_evo_m, r_evo_m = create_slider("Módulo", 1, 10, 2, False); sl_evo_h, r_evo_h = create_slider("Grosor (Z)", 2, 50, 10, False); col_evolvente = ft.Column([ft.Text(value="Engranaje Evolvente", color="#FFAB00"), ft.Container(content=ft.Column([r_evo_d, r_evo_m, r_evo_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_crem_d, r_crem_d = create_slider("Nº Dientes", 5, 50, 15, True); sl_crem_m, r_crem_m = create_slider("Módulo", 1, 10, 2, False); sl_crem_h, r_crem_h = create_slider("Grosor (Z)", 2, 50, 10, False); sl_crem_w, r_crem_w = create_slider("Ancho Base", 2, 50, 8, False); col_cremallera = ft.Column([ft.Text(value="Cremallera", color="#FFAB00"), ft.Container(content=ft.Column([r_crem_d, r_crem_m, r_crem_h, r_crem_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_con_d, r_con_d = create_slider("Nº Dientes", 8, 40, 16, True); sl_con_rb, r_con_rb = create_slider("Radio Base", 10, 100, 30, False); sl_con_rt, r_con_rt = create_slider("Radio Top", 5, 80, 15, False); sl_con_h, r_con_h = create_slider("Altura Cono", 5, 100, 20, False); col_conico = ft.Column([ft.Text(value="Engranaje Cónico", color="#FFAB00"), ft.Container(content=ft.Column([r_con_d, r_con_rb, r_con_rt, r_con_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_mc_x, r_mc_x = create_slider("Ancho X", 20, 200, 60, False); sl_mc_y, r_mc_y = create_slider("Largo Y", 20, 200, 40, False); sl_mc_z, r_mc_z = create_slider("Alto Z", 10, 100, 30, False); sl_mc_tol, r_mc_tol = create_slider("Tol. Encaje", 0.0, 2.0, 0.4, False); sl_mc_sep, r_mc_sep = create_slider("Sep. Visual", 0, 50, 15, False); col_multicaja = ft.Column([ft.Text(value="Caja+Tapa (Multicuerpo)", color="#7CB342"), ft.Container(content=ft.Column([r_mc_x, r_mc_y, r_mc_z, r_mc_tol, r_mc_sep]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_perf_p, r_perf_p = create_slider("Nº Puntas", 3, 20, 5, True); sl_perf_re, r_perf_re = create_slider("Radio Ext", 10, 100, 40, False); sl_perf_ri, r_perf_ri = create_slider("Radio Int", 5, 80, 15, False); sl_perf_h, r_perf_h = create_slider("Grosor (Z)", 2, 50, 10, False); col_perfil = ft.Column([ft.Text(value="Estrella Paramétrica 2D", color="#AB47BC"), ft.Container(content=ft.Column([r_perf_p, r_perf_re, r_perf_ri, r_perf_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_rev_h, r_rev_h = create_slider("Altura Total", 20, 200, 80, False); sl_rev_r1, r_rev_r1 = create_slider("Radio Base", 10, 100, 30, False); sl_rev_r2, r_rev_r2 = create_slider("Radio Cuello", 5, 80, 15, False); sl_rev_g, r_rev_g = create_slider("Grosor Pared", 0, 15, 2, False); col_revolucion = ft.Column([ft.Text(value="Sólido de Revolución", color="#AB47BC"), ft.Container(content=ft.Column([r_rev_h, r_rev_r1, r_rev_r2, r_rev_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_c_grosor, r_c_g = create_slider("Vaciado Pared", 0, 20, 0, False); col_cubo = ft.Column([ft.Text(value="Cubo Paramétrico", color="#8B949E"), r_c_g], visible=False)
-        sl_p_rint, r_p_rint = create_slider("Radio Hueco", 0, 95, 15, False); sl_p_lados, r_p_lados = create_slider("Caras (LowPoly)", 3, 64, 64, True); col_cilindro = ft.Column([ft.Text(value="Cilindro / Prisma", color="#8B949E"), r_p_rint, r_p_lados], visible=False)
-        sl_l_largo, r_l_l = create_slider("Largo Brazos", 10, 100, 40, False); sl_l_ancho, r_l_a = create_slider("Ancho Perfil", 5, 50, 15, False); sl_l_grosor, r_l_g = create_slider("Grosor Chapa", 1, 20, 3, False); sl_l_hueco, r_l_h = create_slider("Agujero", 0, 10, 2, False); sl_l_chaf, r_l_chaf = create_slider("Refuerzo Int", 0, 20, 5, False); col_escuadra = ft.Column([ft.Text(value="Escuadra Tipo L", color="#8B949E"), ft.Container(content=ft.Column([r_l_l, r_l_a, r_l_g, r_l_h, r_l_chaf]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_e_dientes, r_e_d = create_slider("Dientes", 6, 40, 16, True); sl_e_radio, r_e_r = create_slider("Radio Base", 10, 100, 30, False); sl_e_grosor, r_e_g = create_slider("Grosor", 2, 50, 5, False); sl_e_eje, r_e_e = create_slider("Hueco Eje", 0, 30, 5, False); col_engranaje = ft.Column([ft.Text(value="Piñón Cuadrado Básico", color="#8B949E"), ft.Container(content=ft.Column([r_e_d, r_e_r, r_e_g, r_e_e]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_pcb_x, r_pcb_x = create_slider("Largo PCB", 20, 200, 70, False); sl_pcb_y, r_pcb_y = create_slider("Ancho PCB", 20, 200, 50, False); sl_pcb_h, r_pcb_h = create_slider("Altura Caja", 10, 100, 20, False); sl_pcb_t, r_pcb_t = create_slider("Grosor Pared", 1, 10, 2, False); col_pcb = ft.Column([ft.Text(value="Caja para Electrónica", color="#8B949E"), ft.Container(content=ft.Column([r_pcb_x, r_pcb_y, r_pcb_h, r_pcb_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_v_l, r_v_l = create_slider("Longitud", 10, 300, 50, False); col_vslot = ft.Column([ft.Text(value="Perfil V-Slot 2020", color="#8B949E"), ft.Container(content=ft.Column([r_v_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_bi_l, r_bi_l = create_slider("Largo Total", 10, 100, 30, False); sl_bi_d, r_bi_d = create_slider("Diámetro Eje", 5, 30, 10, False); col_bisagra = ft.Column([ft.Text(value="Bisagra Print-in-Place", color="#8B949E"), ft.Container(content=ft.Column([r_bi_l, r_bi_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_clamp_d, r_clamp_d = create_slider("Ø Tubo", 10, 100, 25, False); sl_clamp_g, r_clamp_g = create_slider("Grosor Arco", 2, 15, 5, False); sl_clamp_w, r_clamp_w = create_slider("Ancho Pieza", 5, 50, 15, False); col_abrazadera = ft.Column([ft.Text(value="Abrazadera de Tubo", color="#8B949E"), ft.Container(content=ft.Column([r_clamp_d, r_clamp_g, r_clamp_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_fij_m, r_fij_m = create_slider("Métrica (M)", 3, 20, 8, True); sl_fij_l, r_fij_l = create_slider("Largo Tornillo", 0, 100, 30, False); col_fijacion = ft.Column([ft.Text(value="Tuerca / Tornillo Hex", color="#FFAB00"), ft.Container(content=ft.Column([r_fij_m, r_fij_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_rod_dint, r_rod_dint = create_slider("Ø Eje Interno", 3, 50, 8, False); sl_rod_dext, r_rod_dext = create_slider("Ø Externo", 10, 100, 22, False); sl_rod_h, r_rod_h = create_slider("Altura", 3, 30, 7, False); col_rodamiento = ft.Column([ft.Text(value="Rodamiento de Bolas", color="#FFAB00"), ft.Container(content=ft.Column([r_rod_dint, r_rod_dext, r_rod_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_plan_rs, r_plan_rs = create_slider("Radio Sol", 5, 40, 10, False); sl_plan_rp, r_plan_rp = create_slider("Radio Planetas", 4, 30, 8, False); sl_plan_h, r_plan_h = create_slider("Grosor Total", 3, 30, 6, False); col_planetario = ft.Column([ft.Text(value="Mecanismo Planetario (Soporta Cinemática)", color="#FFAB00"), ft.Container(content=ft.Column([r_plan_rs, r_plan_rp, r_plan_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_pol_t, r_pol_t = create_slider("Nº Dientes", 10, 60, 20, True); sl_pol_w, r_pol_w = create_slider("Ancho Correa", 4, 20, 6, False); sl_pol_d, r_pol_d = create_slider("Ø Eje Motor", 2, 12, 5, False); col_polea = ft.Column([ft.Text(value="Polea Dentada GT2", color="#00E5FF"), ft.Container(content=ft.Column([r_pol_t, r_pol_w, r_pol_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_hel_r, r_hel_r = create_slider("Radio Total", 20, 150, 50, False); sl_hel_n, r_hel_n = create_slider("Nº Aspas", 2, 12, 4, True); sl_hel_p, r_hel_p = create_slider("Torsión", 10, 80, 45, False); col_helice = ft.Column([ft.Text(value="Hélice Paramétrica", color="#00E5FF"), ft.Container(content=ft.Column([r_hel_r, r_hel_n, r_hel_p]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_rot_r, r_rot_r = create_slider("Radio Bola", 5, 30, 10, False); col_rotula = ft.Column([ft.Text(value="Rótula Articulada", color="#00E5FF"), ft.Container(content=ft.Column([r_rot_r]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_car_x, r_car_x = create_slider("Ancho (X)", 20, 200, 80, False); sl_car_y, r_car_y = create_slider("Largo (Y)", 20, 200, 120, False); sl_car_z, r_car_z = create_slider("Alto (Z)", 10, 100, 30, False); sl_car_t, r_car_t = create_slider("Grosor Pared", 1, 5, 2, False); col_carcasa = ft.Column([ft.Text(value="Carcasa Smart con Ventilación", color="#00E5FF"), ft.Container(content=ft.Column([r_car_x, r_car_y, r_car_z, r_car_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_mue_r, r_mue_r = create_slider("Radio Resorte", 5, 50, 15, False); sl_mue_h, r_mue_h = create_slider("Radio Hilo", 1, 10, 2, False); sl_mue_v, r_mue_v = create_slider("Nº Vueltas", 2, 20, 5, False); sl_mue_alt, r_mue_alt = create_slider("Altura Total", 10, 200, 40, False); col_muelle = ft.Column([ft.Text(value="Muelle Helicoidal", color="#FFAB00"), ft.Container(content=ft.Column([r_mue_r, r_mue_h, r_mue_v, r_mue_alt]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_acme_d, r_acme_d = create_slider("Diámetro Eje", 4, 30, 8, False); sl_acme_p, r_acme_p = create_slider("Paso (Pitch)", 1, 10, 2, False); sl_acme_l, r_acme_l = create_slider("Longitud", 10, 200, 50, False); col_acme = ft.Column([ft.Text(value="Eje Roscado (ACME)", color="#FFAB00"), ft.Container(content=ft.Column([r_acme_d, r_acme_p, r_acme_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_codo_r, r_codo_r = create_slider("Radio Tubo", 2, 50, 10, False); sl_codo_c, r_codo_c = create_slider("Radio Curva", 10, 150, 30, False); sl_codo_a, r_codo_a = create_slider("Ángulo Giroº", 10, 180, 90, False); sl_codo_g, r_codo_g = create_slider("Grosor Hueco", 0, 10, 2, False); col_codo = ft.Column([ft.Text(value="Tubería y Codos", color="#00E5FF"), ft.Container(content=ft.Column([r_codo_r, r_codo_c, r_codo_a, r_codo_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_naca_c, r_naca_c = create_slider("Cuerda", 20, 200, 80, False); sl_naca_g, r_naca_g = create_slider("Grosor Max %", 5, 30, 15, False); sl_naca_e, r_naca_e = create_slider("Envergadura Z", 10, 300, 100, False); col_naca = ft.Column([ft.Text(value="Perfil Alar NACA", color="#00E5FF"), ft.Container(content=ft.Column([r_naca_c, r_naca_g, r_naca_e]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_st_ang, r_st_ang = create_slider("Inclinación º", 5, 45, 15, False); sl_st_w, r_st_w = create_slider("Ancho Base", 40, 120, 70, False); sl_st_t, r_st_t = create_slider("Grosor Dispo.", 6, 20, 12, False); col_stand_movil = ft.Column([ft.Text(value="Soporte para Móvil/Tablet", color="#00E676"), inst("Soporte de escritorio rígido con labio de sujeción frontal."), ft.Container(content=ft.Column([r_st_ang, r_st_w, r_st_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_clip_d, r_clip_d = create_slider("Ø Cable", 3, 15, 6, False); sl_clip_w, r_clip_w = create_slider("Ancho Adhesivo", 10, 40, 20, False); col_clip_cable = ft.Column([ft.Text(value="Clip de Cables (Desk)", color="#00E676"), inst("Organizador de cables. Imprime boca abajo. Añade cinta de doble cara en la base plana."), ft.Container(content=ft.Column([r_clip_d, r_clip_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
-        sl_vr_s, r_vr_s = create_slider("Tamaño Base", 50, 500, 200, False); col_vr_pedestal = ft.Column([ft.Text(value="Pedestal de Exhibición (Modo VR)", color="#B388FF"), inst("Usa esto como base en el Ensamblador antes de colocar tu modelo encima para verlo en Realidad Virtual."), ft.Container(content=ft.Column([r_vr_s]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_las_x, r_las_x = create_slider("Ancho Objeto", 10, 200, 50, False); sl_las_y, r_las_y = create_slider("Largo Objeto", 10, 200, 50, False); sl_las_z, r_las_z = create_slider("Altura Z Corte", 0, 100, 5, False); col_laser = ft.Column([ft.Text("Perfil Láser", color="#D50000"), inst("Secciona cualquier modelo 3D en Z. Obten un perfil plano."), ft.Container(content=ft.Column([r_las_x, r_las_y, r_las_z]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_alin_f, r_alin_f = create_slider("Filas (Y)", 1, 10, 3, True); sl_alin_c, r_alin_c = create_slider("Columnas (X)", 1, 10, 3, True); sl_alin_dx, r_alin_dx = create_slider("Distancia X", 5, 100, 20, False); sl_alin_dy, r_alin_dy = create_slider("Distancia Y", 5, 100, 20, False); sl_alin_h, r_alin_h = create_slider("Altura Base", 2, 50, 10, False); col_array_lin = ft.Column([ft.Text("Matriz Lineal Grid", color="#00B0FF"), ft.Container(content=ft.Column([r_alin_f, r_alin_c, r_alin_dx, r_alin_dy, r_alin_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_apol_n, r_apol_n = create_slider("Repeticiones", 2, 36, 8, True); sl_apol_r, r_apol_r = create_slider("Radio Corona", 10, 150, 40, False); sl_apol_rp, r_apol_rp = create_slider("Radio Pieza", 2, 20, 5, False); sl_apol_h, r_apol_h = create_slider("Grosor (Z)", 2, 50, 5, False); col_array_pol = ft.Column([ft.Text("Matriz Polar Circular", color="#00B0FF"), ft.Container(content=ft.Column([r_apol_n, r_apol_r, r_apol_rp, r_apol_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_loft_w, r_loft_w = create_slider("Ancho Base SQ", 10, 150, 60, False); sl_loft_r, r_loft_r = create_slider("Radio Top", 5, 100, 20, False); sl_loft_h, r_loft_h = create_slider("Altura Z", 10, 200, 80, False); sl_loft_g, r_loft_g = create_slider("Grosor Pared", 1, 10, 2, False); col_loft = ft.Column([ft.Text("Lofting Adaptador", color="#D50000"), ft.Container(content=ft.Column([r_loft_w, r_loft_r, r_loft_h, r_loft_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_pan_x, r_pan_x = create_slider("Ancho X", 20, 200, 80, False); sl_pan_y, r_pan_y = create_slider("Largo Y", 20, 200, 80, False); sl_pan_z, r_pan_z = create_slider("Alto Z", 2, 50, 10, False); sl_pan_r, r_pan_r = create_slider("Radio Hex", 2, 20, 5, False); col_panal = ft.Column([ft.Text("Panal Honeycomb", color="#FBC02D"), ft.Container(content=ft.Column([r_pan_x, r_pan_y, r_pan_z, r_pan_r]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_vor_ro, r_vor_ro = create_slider("Radio Ext", 10, 100, 40, False); sl_vor_ri, r_vor_ri = create_slider("Radio Int", 5, 95, 35, False); sl_vor_h, r_vor_h = create_slider("Altura Tubo", 20, 200, 100, False); sl_vor_d, r_vor_d = create_slider("Densidad Red", 4, 24, 12, True); col_voronoi = ft.Column([ft.Text("Carcasa Voronoi", color="#FBC02D"), ft.Container(content=ft.Column([r_vor_ro, r_vor_ri, r_vor_h, r_vor_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_evo_d, r_evo_d = create_slider("Nº Dientes", 8, 60, 20, True); sl_evo_m, r_evo_m = create_slider("Módulo", 1, 10, 2, False); sl_evo_h, r_evo_h = create_slider("Grosor (Z)", 2, 50, 10, False); col_evolvente = ft.Column([ft.Text("Engranaje Evolvente", color="#FFAB00"), ft.Container(content=ft.Column([r_evo_d, r_evo_m, r_evo_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_crem_d, r_crem_d = create_slider("Nº Dientes", 5, 50, 15, True); sl_crem_m, r_crem_m = create_slider("Módulo", 1, 10, 2, False); sl_crem_h, r_crem_h = create_slider("Grosor (Z)", 2, 50, 10, False); sl_crem_w, r_crem_w = create_slider("Ancho Base", 2, 50, 8, False); col_cremallera = ft.Column([ft.Text("Cremallera", color="#FFAB00"), ft.Container(content=ft.Column([r_crem_d, r_crem_m, r_crem_h, r_crem_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_con_d, r_con_d = create_slider("Nº Dientes", 8, 40, 16, True); sl_con_rb, r_con_rb = create_slider("Radio Base", 10, 100, 30, False); sl_con_rt, r_con_rt = create_slider("Radio Top", 5, 80, 15, False); sl_con_h, r_con_h = create_slider("Altura Cono", 5, 100, 20, False); col_conico = ft.Column([ft.Text("Engranaje Cónico", color="#FFAB00"), ft.Container(content=ft.Column([r_con_d, r_con_rb, r_con_rt, r_con_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_mc_x, r_mc_x = create_slider("Ancho X", 20, 200, 60, False); sl_mc_y, r_mc_y = create_slider("Largo Y", 20, 200, 40, False); sl_mc_z, r_mc_z = create_slider("Alto Z", 10, 100, 30, False); sl_mc_tol, r_mc_tol = create_slider("Tol. Encaje", 0.0, 2.0, 0.4, False); sl_mc_sep, r_mc_sep = create_slider("Sep. Visual", 0, 50, 15, False); col_multicaja = ft.Column([ft.Text("Caja+Tapa (Multicuerpo)", color="#7CB342"), ft.Container(content=ft.Column([r_mc_x, r_mc_y, r_mc_z, r_mc_tol, r_mc_sep]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_perf_p, r_perf_p = create_slider("Nº Puntas", 3, 20, 5, True); sl_perf_re, r_perf_re = create_slider("Radio Ext", 10, 100, 40, False); sl_perf_ri, r_perf_ri = create_slider("Radio Int", 5, 80, 15, False); sl_perf_h, r_perf_h = create_slider("Grosor (Z)", 2, 50, 10, False); col_perfil = ft.Column([ft.Text("Estrella Paramétrica 2D", color="#AB47BC"), ft.Container(content=ft.Column([r_perf_p, r_perf_re, r_perf_ri, r_perf_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_rev_h, r_rev_h = create_slider("Altura Total", 20, 200, 80, False); sl_rev_r1, r_rev_r1 = create_slider("Radio Base", 10, 100, 30, False); sl_rev_r2, r_rev_r2 = create_slider("Radio Cuello", 5, 80, 15, False); sl_rev_g, r_rev_g = create_slider("Grosor Pared", 0, 15, 2, False); col_revolucion = ft.Column([ft.Text("Sólido de Revolución", color="#AB47BC"), ft.Container(content=ft.Column([r_rev_h, r_rev_r1, r_rev_r2, r_rev_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_c_grosor, r_c_g = create_slider("Vaciado Pared", 0, 20, 0, False); col_cubo = ft.Column([ft.Text("Cubo Paramétrico", color="#8B949E"), r_c_g], visible=False)
+        sl_p_rint, r_p_rint = create_slider("Radio Hueco", 0, 95, 15, False); sl_p_lados, r_p_lados = create_slider("Caras (LowPoly)", 3, 64, 64, True); col_cilindro = ft.Column([ft.Text("Cilindro / Prisma", color="#8B949E"), r_p_rint, r_p_lados], visible=False)
+        sl_l_largo, r_l_l = create_slider("Largo Brazos", 10, 100, 40, False); sl_l_ancho, r_l_a = create_slider("Ancho Perfil", 5, 50, 15, False); sl_l_grosor, r_l_g = create_slider("Grosor Chapa", 1, 20, 3, False); sl_l_hueco, r_l_h = create_slider("Agujero", 0, 10, 2, False); sl_l_chaf, r_l_chaf = create_slider("Refuerzo Int", 0, 20, 5, False); col_escuadra = ft.Column([ft.Text("Escuadra Tipo L", color="#8B949E"), ft.Container(content=ft.Column([r_l_l, r_l_a, r_l_g, r_l_h, r_l_chaf]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_e_dientes, r_e_d = create_slider("Dientes", 6, 40, 16, True); sl_e_radio, r_e_r = create_slider("Radio Base", 10, 100, 30, False); sl_e_grosor, r_e_g = create_slider("Grosor", 2, 50, 5, False); sl_e_eje, r_e_e = create_slider("Hueco Eje", 0, 30, 5, False); col_engranaje = ft.Column([ft.Text("Piñón Cuadrado Básico", color="#8B949E"), ft.Container(content=ft.Column([r_e_d, r_e_r, r_e_g, r_e_e]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_pcb_x, r_pcb_x = create_slider("Largo PCB", 20, 200, 70, False); sl_pcb_y, r_pcb_y = create_slider("Ancho PCB", 20, 200, 50, False); sl_pcb_h, r_pcb_h = create_slider("Altura Caja", 10, 100, 20, False); sl_pcb_t, r_pcb_t = create_slider("Grosor Pared", 1, 10, 2, False); col_pcb = ft.Column([ft.Text("Caja para Electrónica", color="#8B949E"), ft.Container(content=ft.Column([r_pcb_x, r_pcb_y, r_pcb_h, r_pcb_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_v_l, r_v_l = create_slider("Longitud", 10, 300, 50, False); col_vslot = ft.Column([ft.Text("Perfil V-Slot 2020", color="#8B949E"), ft.Container(content=ft.Column([r_v_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_bi_l, r_bi_l = create_slider("Largo Total", 10, 100, 30, False); sl_bi_d, r_bi_d = create_slider("Diámetro Eje", 5, 30, 10, False); col_bisagra = ft.Column([ft.Text("Bisagra Print-in-Place", color="#8B949E"), ft.Container(content=ft.Column([r_bi_l, r_bi_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_clamp_d, r_clamp_d = create_slider("Ø Tubo", 10, 100, 25, False); sl_clamp_g, r_clamp_g = create_slider("Grosor Arco", 2, 15, 5, False); sl_clamp_w, r_clamp_w = create_slider("Ancho Pieza", 5, 50, 15, False); col_abrazadera = ft.Column([ft.Text("Abrazadera de Tubo", color="#8B949E"), ft.Container(content=ft.Column([r_clamp_d, r_clamp_g, r_clamp_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_fij_m, r_fij_m = create_slider("Métrica (M)", 3, 20, 8, True); sl_fij_l, r_fij_l = create_slider("Largo Tornillo", 0, 100, 30, False); col_fijacion = ft.Column([ft.Text("Tuerca / Tornillo Hex", color="#FFAB00"), ft.Container(content=ft.Column([r_fij_m, r_fij_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_rod_dint, r_rod_dint = create_slider("Ø Eje Interno", 3, 50, 8, False); sl_rod_dext, r_rod_dext = create_slider("Ø Externo", 10, 100, 22, False); sl_rod_h, r_rod_h = create_slider("Altura", 3, 30, 7, False); col_rodamiento = ft.Column([ft.Text("Rodamiento de Bolas", color="#FFAB00"), ft.Container(content=ft.Column([r_rod_dint, r_rod_dext, r_rod_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_plan_rs, r_plan_rs = create_slider("Radio Sol", 5, 40, 10, False); sl_plan_rp, r_plan_rp = create_slider("Radio Planetas", 4, 30, 8, False); sl_plan_h, r_plan_h = create_slider("Grosor Total", 3, 30, 6, False); col_planetario = ft.Column([ft.Text("Mecanismo Planetario (Soporta Cinemática)", color="#FFAB00"), ft.Container(content=ft.Column([r_plan_rs, r_plan_rp, r_plan_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_pol_t, r_pol_t = create_slider("Nº Dientes", 10, 60, 20, True); sl_pol_w, r_pol_w = create_slider("Ancho Correa", 4, 20, 6, False); sl_pol_d, r_pol_d = create_slider("Ø Eje Motor", 2, 12, 5, False); col_polea = ft.Column([ft.Text("Polea Dentada GT2", color="#00E5FF"), ft.Container(content=ft.Column([r_pol_t, r_pol_w, r_pol_d]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_hel_r, r_hel_r = create_slider("Radio Total", 20, 150, 50, False); sl_hel_n, r_hel_n = create_slider("Nº Aspas", 2, 12, 4, True); sl_hel_p, r_hel_p = create_slider("Torsión", 10, 80, 45, False); col_helice = ft.Column([ft.Text("Hélice Paramétrica", color="#00E5FF"), ft.Container(content=ft.Column([r_hel_r, r_hel_n, r_hel_p]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_rot_r, r_rot_r = create_slider("Radio Bola", 5, 30, 10, False); col_rotula = ft.Column([ft.Text("Rótula Articulada", color="#00E5FF"), ft.Container(content=ft.Column([r_rot_r]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_car_x, r_car_x = create_slider("Ancho (X)", 20, 200, 80, False); sl_car_y, r_car_y = create_slider("Largo (Y)", 20, 200, 120, False); sl_car_z, r_car_z = create_slider("Alto (Z)", 10, 100, 30, False); sl_car_t, r_car_t = create_slider("Grosor Pared", 1, 5, 2, False); col_carcasa = ft.Column([ft.Text("Carcasa Smart con Ventilación", color="#00E5FF"), ft.Container(content=ft.Column([r_car_x, r_car_y, r_car_z, r_car_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_mue_r, r_mue_r = create_slider("Radio Resorte", 5, 50, 15, False); sl_mue_h, r_mue_h = create_slider("Radio Hilo", 1, 10, 2, False); sl_mue_v, r_mue_v = create_slider("Nº Vueltas", 2, 20, 5, False); sl_mue_alt, r_mue_alt = create_slider("Altura Total", 10, 200, 40, False); col_muelle = ft.Column([ft.Text("Muelle Helicoidal", color="#FFAB00"), ft.Container(content=ft.Column([r_mue_r, r_mue_h, r_mue_v, r_mue_alt]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_acme_d, r_acme_d = create_slider("Diámetro Eje", 4, 30, 8, False); sl_acme_p, r_acme_p = create_slider("Paso (Pitch)", 1, 10, 2, False); sl_acme_l, r_acme_l = create_slider("Longitud", 10, 200, 50, False); col_acme = ft.Column([ft.Text("Eje Roscado (ACME)", color="#FFAB00"), ft.Container(content=ft.Column([r_acme_d, r_acme_p, r_acme_l]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_codo_r, r_codo_r = create_slider("Radio Tubo", 2, 50, 10, False); sl_codo_c, r_codo_c = create_slider("Radio Curva", 10, 150, 30, False); sl_codo_a, r_codo_a = create_slider("Ángulo Giroº", 10, 180, 90, False); sl_codo_g, r_codo_g = create_slider("Grosor Hueco", 0, 10, 2, False); col_codo = ft.Column([ft.Text("Tubería y Codos", color="#00E5FF"), ft.Container(content=ft.Column([r_codo_r, r_codo_c, r_codo_a, r_codo_g]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_naca_c, r_naca_c = create_slider("Cuerda", 20, 200, 80, False); sl_naca_g, r_naca_g = create_slider("Grosor Max %", 5, 30, 15, False); sl_naca_e, r_naca_e = create_slider("Envergadura Z", 10, 300, 100, False); col_naca = ft.Column([ft.Text("Perfil Alar NACA", color="#00E5FF"), ft.Container(content=ft.Column([r_naca_c, r_naca_g, r_naca_e]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_st_ang, r_st_ang = create_slider("Inclinación º", 5, 45, 15, False); sl_st_w, r_st_w = create_slider("Ancho Base", 40, 120, 70, False); sl_st_t, r_st_t = create_slider("Grosor Dispo.", 6, 20, 12, False); col_stand_movil = ft.Column([ft.Text("Soporte para Móvil/Tablet", color="#00E676"), inst("Soporte de escritorio rígido con labio de sujeción frontal."), ft.Container(content=ft.Column([r_st_ang, r_st_w, r_st_t]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_clip_d, r_clip_d = create_slider("Ø Cable", 3, 15, 6, False); sl_clip_w, r_clip_w = create_slider("Ancho Adhesivo", 10, 40, 20, False); col_clip_cable = ft.Column([ft.Text("Clip de Cables (Desk)", color="#00E676"), inst("Organizador de cables. Imprime boca abajo. Añade cinta de doble cara en la base plana."), ft.Container(content=ft.Column([r_clip_d, r_clip_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
+        sl_vr_s, r_vr_s = create_slider("Tamaño Base", 50, 500, 200, False); col_vr_pedestal = ft.Column([ft.Text("Pedestal de Exhibición (Modo VR)", color="#B388FF"), inst("Usa esto como base en el Ensamblador antes de colocar tu modelo encima para verlo en Realidad Virtual."), ft.Container(content=ft.Column([r_vr_s]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
 
-        # === GENERADOR DE CÓDIGO JS CON HÍBRIDO MÚLTIPLE INYECTADO (FIXED) ===
+        # === GENERADOR DE CÓDIGO JS CON HÍBRIDO MÚLTIPLE INYECTADO ===
         def get_stl_base_js():
             sc = sl_stl_sc.value / 100.0; tx = sl_stl_x.value; ty = sl_stl_y.value; tz = sl_stl_z.value
             return f"""  var sc = {sc}; var tx = {tx}; var ty = {ty}; var tz = {tz};
@@ -933,7 +931,7 @@ def main(page: ft.Page):
             panel_stl_transform.visible = nombre_herramienta.startswith("stl")
             generate_param_code(); page.update()
 
-        def thumbnail(icon, title, tool_id, color): return ft.Container(content=ft.Column([ft.Text(value=icon, size=24), ft.Text(value=title, size=10, color="white", weight="bold")], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), width=75, height=70, bgcolor=color, border_radius=8, on_click=lambda _: select_tool(tool_id), ink=True, border=ft.border.all(1, "#30363D"))
+        def thumbnail(icon, title, tool_id, color): return ft.Container(content=ft.Column([ft.Text(icon, size=24), ft.Text(title, size=10, color="white", weight="bold")], alignment=ft.MainAxisAlignment.CENTER, horizontal_alignment=ft.CrossAxisAlignment.CENTER), width=75, height=70, bgcolor=color, border_radius=8, on_click=lambda _: select_tool(tool_id), ink=True, border=ft.border.all(1, "#30363D"))
 
         cat_especial = ft.Row([thumbnail("🧠", "Código Libre", "custom", "#000000"), thumbnail("🔠", "Placas Texto", "texto", "#880E4F"), thumbnail("🥽", "Pedestal VR", "vr_pedestal", "#B388FF")], scroll="auto")
         cat_bocetos = ft.Row([thumbnail("✍️", "Sketch 2D", "sketcher", "#2962FF")], scroll="auto")
@@ -952,20 +950,20 @@ def main(page: ft.Page):
 
         view_constructor = ft.Column([
             panel_globales, 
-            ft.Text(value="💡 Opciones Especiales:", size=12, color="#8B949E"), cat_especial,
-            ft.Text(value="📐 Bocetos y Perfiles 2D:", size=12, color="#2962FF", weight="bold"), cat_bocetos,
-            ft.Text(value="⚔️ ULTIMATE STL FORGE:", size=12, color="#00E676", weight="bold"), cat_stl_forge,
-            ft.Text(value="🔋 Accesorios Prácticos:", size=12, color="#00E676"), cat_accesorios,
-            ft.Text(value="🏭 Producción y Láser:", size=12, color="#00B0FF"), cat_produccion,
-            ft.Text(value="🌪️ Transición de Formas:", size=12, color="#D50000"), cat_lofting,
-            ft.Text(value="🧬 Topología y Voronoi:", size=12, color="#FBC02D"), cat_topologia,
-            ft.Text(value="⚙️ Engranajes Avanzados:", size=12, color="#FF9100"), cat_engranajes,
-            ft.Text(value="🧱 Ensamblajes Multi-Cuerpo:", size=12, color="#7CB342"), cat_multicuerpo,
-            ft.Text(value="📐 Perfiles y Revolución 2D->3D:", size=12, color="#AB47BC"), cat_perfiles,
-            ft.Text(value="🛸 Aero y Orgánico:", size=12, color="#00E5FF"), cat_aero,
-            ft.Text(value="⚙️ Cinemática y Mecanismos:", size=12, color="#FFAB00"), cat_mecanismos,
-            ft.Text(value="🛠️ Ingeniería:", size=12, color="#FF9100"), cat_ingenieria,
-            ft.Text(value="📦 Geometría Básica:", size=12, color="#8B949E"), cat_basico,
+            ft.Text("💡 Opciones Especiales:", size=12, color="#8B949E"), cat_especial,
+            ft.Text("📐 Bocetos y Perfiles 2D:", size=12, color="#2962FF", weight="bold"), cat_bocetos,
+            ft.Text("⚔️ ULTIMATE STL FORGE:", size=12, color="#00E676", weight="bold"), cat_stl_forge,
+            ft.Text("🔋 Accesorios Prácticos:", size=12, color="#00E676"), cat_accesorios,
+            ft.Text("🏭 Producción y Láser:", size=12, color="#00B0FF"), cat_produccion,
+            ft.Text("🌪️ Transición de Formas:", size=12, color="#D50000"), cat_lofting,
+            ft.Text("🧬 Topología y Voronoi:", size=12, color="#FBC02D"), cat_topologia,
+            ft.Text("⚙️ Engranajes Avanzados:", size=12, color="#FF9100"), cat_engranajes,
+            ft.Text("🧱 Ensamblajes Multi-Cuerpo:", size=12, color="#7CB342"), cat_multicuerpo,
+            ft.Text("📐 Perfiles y Revolución 2D->3D:", size=12, color="#AB47BC"), cat_perfiles,
+            ft.Text("🛸 Aero y Orgánico:", size=12, color="#00E5FF"), cat_aero,
+            ft.Text("⚙️ Cinemática y Mecanismos:", size=12, color="#FFAB00"), cat_mecanismos,
+            ft.Text("🛠️ Ingeniería:", size=12, color="#FF9100"), cat_ingenieria,
+            ft.Text("📦 Geometría Básica:", size=12, color="#8B949E"), cat_basico,
             ft.Divider(color="#30363D"),
             
             panel_stl_transform,
@@ -973,11 +971,11 @@ def main(page: ft.Page):
             col_texto, col_cubo, col_cilindro, col_laser, col_array_lin, col_array_pol, col_loft, col_panal, col_voronoi, col_evolvente, col_cremallera, col_conico, col_multicaja, col_perfil, col_revolucion, col_escuadra, col_engranaje, col_pcb, col_vslot, col_bisagra, col_abrazadera, col_fijacion, col_rodamiento, col_planetario, col_polea, col_helice, col_rotula, col_carcasa, col_muelle, col_acme, col_codo, col_naca, col_stand_movil, col_clip_cable, col_vr_pedestal,
             
             ft.Container(height=10),
-            ft.ElevatedButton(text="▶ ENVIAR AL WORKER (RENDER 3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
+            ft.ElevatedButton("▶ ENVIAR AL WORKER (RENDER 3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
         ], expand=True, scroll="auto")
 
         view_editor = ft.Column([
-            ft.Row([ft.ElevatedButton(text="💾 GUARDAR", on_click=lambda _: save_project_to_nexus(), color="white", bgcolor="#0D47A1"), ft.ElevatedButton(text="🗑️ RESET TOTAL", on_click=lambda _: clear_editor(), color="white", bgcolor="#B71C1C")], scroll="auto"),
+            ft.Row([ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project_to_nexus(), color="white", bgcolor="#0D47A1"), ft.ElevatedButton("🗑️ RESET TOTAL", on_click=lambda _: clear_editor(), color="white", bgcolor="#B71C1C")], scroll="auto"),
             help_box, row_snippets, txt_code
         ], expand=True)
 
@@ -985,26 +983,26 @@ def main(page: ft.Page):
         # SECCIÓN VISOR 3D + TELEMETRÍA GRÁFICA + ENLACE VR
         # =========================================================
         pb_cpu = ft.ProgressBar(width=100, color="#FFAB00", bgcolor="#30363D", value=0, expand=True)
-        txt_cpu_val = ft.Text(value="0.0%", size=11, color="#FFAB00", width=40, text_align="right")
+        txt_cpu_val = ft.Text("0.0%", size=11, color="#FFAB00", width=40, text_align="right")
         pb_ram = ft.ProgressBar(width=100, color="#00E5FF", bgcolor="#30363D", value=0, expand=True)
-        txt_ram_val = ft.Text(value="0.0%", size=11, color="#00E5FF", width=40, text_align="right")
-        txt_cores = ft.Text(value="CORES: ?", size=11, color="#8B949E", weight="bold")
+        txt_ram_val = ft.Text("0.0%", size=11, color="#00E5FF", width=40, text_align="right")
+        txt_cores = ft.Text("CORES: ?", size=11, color="#8B949E", weight="bold")
 
         hw_panel = ft.Container(
             content=ft.Column([
-                ft.Row([ft.Text(value="📊 TELEMETRÍA HARDWARE", size=11, color="#E6EDF3", weight="bold"), txt_cores], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
-                ft.Row([ft.Text(value="CPU", size=11, color="#FFAB00", weight="bold", width=30), pb_cpu, txt_cpu_val]),
-                ft.Row([ft.Text(value="RAM", size=11, color="#00E5FF", weight="bold", width=30), pb_ram, txt_ram_val])
+                ft.Row([ft.Text("📊 TELEMETRÍA HARDWARE", size=11, color="#E6EDF3", weight="bold"), txt_cores], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                ft.Row([ft.Text("CPU", size=11, color="#FFAB00", weight="bold", width=30), pb_cpu, txt_cpu_val]),
+                ft.Row([ft.Text("RAM", size=11, color="#00E5FF", weight="bold", width=30), pb_ram, txt_ram_val])
             ], spacing=5),
             bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#333333")
         )
 
         vr_url = f"http://{LAN_IP}:{LOCAL_PORT}/"
-        warning_msg = ft.Text(value="⚠️ NOTA: Usas datos móviles. Conecta al Wi-Fi para VR.", color="#FF5252", size=10, italic=True) if LAN_IP.startswith("10.") and not (LAN_IP.startswith("10.0.") or LAN_IP.startswith("10.1.")) else ft.Container()
+        warning_msg = ft.Text("⚠️ NOTA: Usas datos móviles. Conecta al Wi-Fi para VR.", color="#FF5252", size=10, italic=True) if LAN_IP.startswith("10.") and not (LAN_IP.startswith("10.0.") or LAN_IP.startswith("10.1.")) else ft.Container()
 
         panel_vr = ft.Container(
             content=ft.Column([
-                ft.Text(value="🥽 MODO GAFAS VR O PC EXTERNO", color="#B388FF", weight="bold", size=11),
+                ft.Text("🥽 MODO GAFAS VR O PC EXTERNO", color="#B388FF", weight="bold", size=11),
                 ft.TextField(value=vr_url, read_only=True, text_size=16, text_align="center", bgcolor="#161B22", color="#00E676"),
                 warning_msg
             ], spacing=5),
@@ -1027,8 +1025,8 @@ def main(page: ft.Page):
 
         view_visor = ft.Column([
             ft.Container(height=5), hw_panel, ft.Container(height=5), panel_vr, ft.Container(height=5),
-            ft.Text(value="Motor Web Worker / Multi-Hilo", text_align="center", color="#00E5FF", weight="bold"),
-            ft.Row([ft.ElevatedButton(text="🔄 ABRIR VISOR 3D (LOCAL)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", color="black", bgcolor="#00E676", height=60, expand=True)], alignment=ft.MainAxisAlignment.CENTER)
+            ft.Text("Motor Web Worker / Multi-Hilo", text_align="center", color="#00E5FF", weight="bold"),
+            ft.Row([ft.ElevatedButton("🔄 ABRIR VISOR 3D (LOCAL)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", color="black", bgcolor="#00E676", height=60, expand=True)], alignment=ft.MainAxisAlignment.CENTER)
         ], expand=True, scroll="auto")
         
         # =========================================================
@@ -1040,19 +1038,19 @@ def main(page: ft.Page):
             list_nexus_db.controls.clear()
             try:
                 files = [f for f in os.listdir(EXPORT_DIR) if not f.startswith('.') and f != "imported.stl"]
-                if not files: list_nexus_db.controls.append(ft.Text(value="Vacío. Inyecta un archivo.", color="#8B949E", italic=True))
+                if not files: list_nexus_db.controls.append(ft.Text("Vacío. Inyecta un archivo.", color="#8B949E", italic=True))
                 for f in files:
                     ext = f.lower().split('.')[-1]; p = os.path.join(EXPORT_DIR, f)
                     list_nexus_db.controls.append(
                         ft.Container(content=ft.Row([
-                            ft.Text(value="🧊" if ext=="stl" else "🧩", size=20),
-                            ft.Text(value=f, color="white", weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.TextButton(text="▶️", on_click=lambda e, fp=p: load_file(fp), tooltip="Cargar"),
-                            ft.TextButton(text="⬇️", on_click=lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), tooltip="Bajar"),
-                            ft.TextButton(text="🗑️", on_click=lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], tooltip="Borrar")
+                            ft.Text("🧊" if ext=="stl" else "🧩", size=20),
+                            ft.Text(f, color="white", weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
+                            ft.TextButton("▶️", on_click=lambda e, fp=p: load_file(fp), tooltip="Cargar"),
+                            ft.TextButton("⬇️", on_click=lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), tooltip="Bajar"),
+                            ft.TextButton("🗑️", on_click=lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], tooltip="Borrar")
                         ]), bgcolor="#21262D", padding=5, border_radius=5)
                     )
-            except Exception as e: list_nexus_db.controls.append(ft.Text(value=f"Error DB: {e}"))
+            except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
             page.update()
 
         def load_file(filepath):
@@ -1087,20 +1085,20 @@ def main(page: ft.Page):
                 dirs.sort(); files.sort()
                 
                 if path != "/" and path != "/storage" and path != "/storage/emulated":
-                    list_android.controls.append(ft.ListTile(leading=ft.Text(value="⬆️", size=24), title=ft.Text(value=".. (Subir nivel)", color="white"), on_click=lambda e: nav_to(os.path.dirname(path))))
+                    list_android.controls.append(ft.ListTile(leading=ft.Text("⬆️", size=24), title=ft.Text(".. (Subir nivel)", color="white"), on_click=lambda e: nav_to(os.path.dirname(path))))
                     
                 for d in dirs:
                     if d.startswith('.'): continue
-                    list_android.controls.append(ft.ListTile(leading=ft.Text(value="📁", size=24), title=ft.Text(value=d, color="#E6EDF3"), on_click=lambda e, p=os.path.join(path, d): nav_to(p)))
+                    list_android.controls.append(ft.ListTile(leading=ft.Text("📁", size=24), title=ft.Text(d, color="#E6EDF3"), on_click=lambda e, p=os.path.join(path, d): nav_to(p)))
                     
                 for f in files:
                     ext = f.lower().split('.')[-1] if '.' in f else ''
                     icon = "📄"; color = "#8B949E"
                     if ext == "stl": icon = "🧊"; color = "#00E676"
                     elif ext == "jscad": icon = "🧩"; color = "#00E5FF"
-                    list_android.controls.append(ft.ListTile(leading=ft.Text(value=icon, size=24), title=ft.Text(value=f, color=color), subtitle=ft.Text(value=f"{os.path.getsize(os.path.join(path, f)) // 1024} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p)))
-            except PermissionError: list_android.controls.append(ft.Text(value="❌ Permiso Denegado.", color="red", weight="bold"))
-            except Exception as ex: list_android.controls.append(ft.Text(value=f"Error: {ex}", color="red"))
+                    list_android.controls.append(ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), subtitle=ft.Text(f"{os.path.getsize(os.path.join(path, f)) // 1024} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p)))
+            except PermissionError: list_android.controls.append(ft.Text("❌ Permiso Denegado.", color="red", weight="bold"))
+            except Exception as ex: list_android.controls.append(ft.Text(f"Error: {ex}", color="red"))
             tf_path.value = path; page.update()
 
         def nav_to(path): nonlocal current_android_dir; current_android_dir = path; refresh_explorer(path)
@@ -1120,25 +1118,25 @@ def main(page: ft.Page):
             status.value = f"✓ Guardado en DB Interna: {fname}"; page.update()
 
         row_quick_paths = ft.Row([
-            ft.ElevatedButton(text="🏠 Android", on_click=lambda _: nav_to("/storage/emulated/0"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton(text="📥 Descargas", on_click=lambda _: nav_to("/storage/emulated/0/Download"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton(text="📁 Nexus DB", on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20", color="white")
+            ft.ElevatedButton("🏠 Android", on_click=lambda _: nav_to("/storage/emulated/0"), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("📥 Descargas", on_click=lambda _: nav_to("/storage/emulated/0/Download"), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("📁 Nexus DB", on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20", color="white")
         ], scroll="auto")
 
         view_archivos = ft.Column([
             ft.Container(content=ft.Column([
-                ft.Text(value="🌐 INYECCIÓN WEB & NEXUS DB", color="#00E676", weight="bold"),
-                ft.ElevatedButton(text="🚀 INYECTAR ARCHIVO (VÍA NAVEGADOR PC)", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf')),
-                ft.Row([ft.Text(value="Archivos listos en memoria:", color="#E6EDF3", size=11), ft.ElevatedButton(text="🔄", on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", color="#00E5FF", width=50)], alignment="spaceBetween"),
+                ft.Text("🌐 INYECCIÓN WEB & NEXUS DB", color="#00E676", weight="bold"),
+                ft.ElevatedButton("🚀 INYECTAR ARCHIVO (VÍA NAVEGADOR PC)", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf')),
+                ft.Row([ft.Text("Archivos listos en memoria:", color="#E6EDF3", size=11), ft.ElevatedButton("🔄", on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", color="#00E5FF", width=50)], alignment="spaceBetween"),
                 ft.Container(content=list_nexus_db, height=130, bgcolor="#0B0E14", border_radius=5, padding=5)
             ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676")),
             ft.Container(height=5),
             ft.Container(content=ft.Column([
-                ft.Text(value="📱 EXPLORADOR NATIVO ANDROID", color="#00E5FF", weight="bold"),
-                ft.Text(value="Toca un .stl (Carga al Forge) o .jscad (Editar):", size=10, color="#8B949E"),
+                ft.Text("📱 EXPLORADOR NATIVO ANDROID", color="#00E5FF", weight="bold"),
+                ft.Text("Toca un .stl (Carga al Forge) o .jscad (Editar):", size=10, color="#8B949E"),
                 row_quick_paths,
-                ft.Row([tf_path, ft.ElevatedButton(text="Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
-                ft.ElevatedButton(text="💾 GUARDAR CÓDIGO AQUÍ", on_click=save_to_android, bgcolor="#0D47A1", color="white", width=float('inf')),
+                ft.Row([tf_path, ft.ElevatedButton("Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
+                ft.ElevatedButton("💾 GUARDAR CÓDIGO AQUÍ", on_click=save_to_android, bgcolor="#0D47A1", color="white", width=float('inf')),
                 ft.Container(content=list_android, expand=True, bgcolor="#0B0E14", border_radius=5, padding=5)
             ], expand=True), bgcolor="#161B22", padding=10, border_radius=8, expand=True)
         ], expand=True)
@@ -1156,17 +1154,17 @@ def main(page: ft.Page):
             page.update()
 
         nav_bar = ft.Row([
-            ft.ElevatedButton(text="💻 CODE", on_click=lambda _: set_tab(0), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton(text="🌐 PARAM", on_click=lambda _: set_tab(1), color="black", bgcolor="#FFAB00"),
-            ft.ElevatedButton(text="👁️ 3D", on_click=lambda _: set_tab(2), color="black", bgcolor="#00E5FF"),
-            ft.ElevatedButton(text="📂 FILES", on_click=lambda _: set_tab(3), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("🌐 PARAM", on_click=lambda _: set_tab(1), color="black", bgcolor="#FFAB00"),
+            ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(2), color="black", bgcolor="#00E5FF"),
+            ft.ElevatedButton("📂 FILES", on_click=lambda _: set_tab(3), bgcolor="#21262D", color="white"),
         ], scroll="auto")
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
         select_tool("planetario"); refresh_explorer(current_android_dir)
 
     except Exception:
-        page.clean(); page.add(ft.Container(ft.Text(value="CRASH FATAL:\n" + traceback.format_exc(), color="red"), padding=50)); page.update()
+        page.clean(); page.add(ft.Container(ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red"), padding=50)); page.update()
 
 if __name__ == "__main__":
     if "TERMUX_VERSION" in os.environ: ft.app(target=main, port=0, view=ft.AppView.WEB_BROWSER)
