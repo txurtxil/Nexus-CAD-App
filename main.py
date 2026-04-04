@@ -1,5 +1,5 @@
 import flet as ft
-import os, base64, json, threading, http.server, socket, time, warnings, traceback, shutil
+import os, base64, json, threading, http.server, socket, time, warnings, traceback, shutil, socketserver
 from urllib.parse import urlparse, unquote
 
 try: import psutil; HAS_PSUTIL = True
@@ -8,7 +8,7 @@ except ImportError: HAS_PSUTIL = False
 warnings.simplefilter("ignore", DeprecationWarning)
 
 # =========================================================
-# CONFIGURACIÓN DE RUTAS Y SERVIDOR (BASE 20.5)
+# CONFIGURACIÓN DE RUTAS Y SERVIDOR
 # =========================================================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
@@ -37,16 +37,16 @@ LAN_IP = get_lan_ip()
 LATEST_CODE_B64 = ""
 
 # =========================================================
-# SERVIDOR WEB (FIX PROGRESSEVENT: CONTENT-LENGTH AÑADIDO)
+# SERVIDOR WEB MULTI-HILO (FIX DEFINITIVO PROGRESSEVENT)
 # =========================================================
 class NexusHandler(http.server.BaseHTTPRequestHandler):
     def _send_cors(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, File-Name")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 
     def send_file_response(self, content_type, data_bytes):
-        # FIX: Añadir Content-Length evita que Android Chrome lance [object ProgressEvent]
         try:
             self.send_response(200)
             self.send_header("Content-type", content_type)
@@ -68,8 +68,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 try:
                     with open(os.path.join(EXPORT_DIR, fn), 'wb') as f:
                         f.write(self.rfile.read(cl))
-                    self.send_file_response("text/plain", b'ok')
-                    return
+                    self.send_file_response("text/plain", b'ok'); return
                 except Exception as e: print(f"Error: {e}")
             self.send_response(500); self._send_cors(); self.end_headers()
 
@@ -80,19 +79,19 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
         if parsed.path == '/api/get_code_b64.json':
             stl_path = os.path.join(EXPORT_DIR, "imported.stl")
             stl_hash = str(os.path.getmtime(stl_path)) if os.path.exists(stl_path) else "0"
-            data = json.dumps({"code_b64": LATEST_CODE_B64, "stl_hash": stl_hash}).encode()
+            data = json.dumps({"code_b64": LATEST_CODE_B64, "stl_hash": stl_hash}).encode('utf-8')
             self.send_file_response("application/json", data)
             LATEST_CODE_B64 = "" 
 
         elif parsed.path == '/imported.stl':
             filepath = os.path.join(EXPORT_DIR, "imported.stl")
-            if os.path.exists(filepath):
+            if os.path.exists(filepath) and os.path.getsize(filepath) > 0:
                 with open(filepath, "rb") as f:
-                    self.send_file_response("application/sla", f.read())
+                    self.send_file_response("application/octet-stream", f.read())
             else: 
-                # FIX: STL Fantasma para prevenir bloqueos de renderizado
+                # FIX: STL Fantasma si el archivo no existe o pesa 0
                 dummy = b"solid dummy\nfacet normal 0 0 0\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\nendsolid dummy\n"
-                self.send_file_response("application/sla", dummy)
+                self.send_file_response("application/octet-stream", dummy)
 
         elif parsed.path == '/upload_ui':
             html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="UTF-8"></head>
@@ -114,8 +113,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             filename = unquote(parsed.path.replace('/descargar/', ''))
             filepath = os.path.join(EXPORT_DIR, filename)
             if os.path.exists(filepath):
-                with open(filepath, "rb") as f:
-                    data = f.read()
+                with open(filepath, "rb") as f: data = f.read()
                 try:
                     self.send_response(200)
                     self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
@@ -131,27 +129,28 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 fn = self.path.strip("/") or "openscad_engine.html"
                 with open(os.path.join(ASSETS_DIR, fn), "rb") as f:
                     data = f.read()
-                    self.send_response(200)
-                    self.send_header("Content-Length", str(len(data)))
-                    self._send_cors()
-                    self.end_headers()
-                    self.wfile.write(data)
+                    self.send_file_response("text/html" if fn.endswith(".html") else "application/javascript", data)
             except: self.send_response(404); self._send_cors(); self.end_headers()
+            
     def log_message(self, *args): pass
 
-threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
+# INYECCIÓN DEL MOTOR MULTI-HILO REAL PARA EVITAR CUELLOS DE BOTELLA
+class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
+threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
 
 # =========================================================
 # LÓGICA DE LA APLICACIÓN FLET
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v26.5 PRO"
+        page.title = "NEXUS CAD v26.6 PRO"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v26.5 PRO | Carrusel + Progress Fix", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v26.6 PRO | Servidor Multi-Hilo Activo", color="#00E676", weight="bold")
         T_INICIAL = "function main() {\n  return CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n}"
         txt_code = ft.TextField(multiline=True, min_lines=10, max_lines=20, value=T_INICIAL, bgcolor="#0B0E14", color="#58A6FF", border_color="#30363D", text_size=12)
 
@@ -345,7 +344,7 @@ def main(page: ft.Page):
             page.update()
 
         # =========================================================
-        # FIX DEFINITIVO DEL CARRUSEL Y DROPDOWN
+        # INTERFAZ DE CARRUSEL
         # =========================================================
         categorias = {
             "Ultimate STL Forge": [
@@ -365,16 +364,13 @@ def main(page: ft.Page):
             "Especiales": [("custom", "Código Libre RAW")]
         }
 
-        # Instanciamos el Dropdown UNICA vez para que Termux no lo bloquee
         dd_tool = ft.Dropdown(width=170, bgcolor="#161B22")
 
         def on_tool_change(e):
             nonlocal herramienta_actual
             if dd_tool.value:
                 herramienta_actual = dd_tool.value
-                for k, p in panels.items(): 
-                    p.visible = (k == herramienta_actual)
-                
+                for k, p in panels.items(): p.visible = (k == herramienta_actual)
                 panel_stl_transform.visible = herramienta_actual.startswith("stl")
                 generate_param_code()
                 page.update()
@@ -382,24 +378,17 @@ def main(page: ft.Page):
         dd_tool.on_change = on_tool_change
 
         def on_cat_click(cat_name):
-            # 1. Colores del carrusel para saber en qué categoría estamos
             for btn in cat_carousel.controls:
                 btn.bgcolor = "#00E676" if btn.data == cat_name else "#161B22"
                 btn.color = "black" if btn.data == cat_name else "white"
-            
-            # 2. VACIAR LA LISTA COMPLETA en memoria (El Fix Definitivo)
             dd_tool.options = []
             for k, v in categorias[cat_name]:
-                # Usamos argumentos posicionales seguros (k=Key, v=Texto)
                 dd_tool.options.append(ft.dropdown.Option(k, v))
-            
-            # 3. Seleccionar el primero y disparar la interfaz
             dd_tool.value = categorias[cat_name][0][0]
             cat_carousel.update()
             dd_tool.update()
             on_tool_change(None)
 
-        # Carrusel Principal Horizontal
         cat_carousel = ft.Row(
             controls=[
                 ft.ElevatedButton(
@@ -409,17 +398,12 @@ def main(page: ft.Page):
                     bgcolor="#00E676" if cat == "Ultimate STL Forge" else "#161B22",
                     color="black" if cat == "Ultimate STL Forge" else "white"
                 ) for cat in categorias.keys()
-            ],
-            scroll="auto"
+            ], scroll="auto"
         )
         
-        botones_raw = ft.Row([
-            ft.ElevatedButton("💾 GUARDAR", bgcolor="#0D47A1", color="white")
-        ], alignment="spaceBetween")
-
+        botones_raw = ft.Row([ft.ElevatedButton("💾 GUARDAR", bgcolor="#0D47A1", color="white")], alignment="spaceBetween")
         editor_exp = ft.ExpansionTile(title=ft.Text("📝 CÓDIGO FUENTE RAW", color="#FFAB00", weight="bold"), controls=[botones_raw, txt_code], bgcolor="#0B0E14")
 
-        # Interfaz de Construcción
         view_constructor = ft.Column([
             cat_carousel, 
             ft.Row([ft.Text("⚙️ Tool:", color="#8B949E", size=12, weight="bold"), dd_tool]),
@@ -453,7 +437,7 @@ def main(page: ft.Page):
         ], expand=True, scroll="auto")
 
         # =========================================================
-        # ECOSISTEMA FILES (EMOJIS SEGUROS Y TEXTBUTTONS POSICIONALES)
+        # ECOSISTEMA FILES
         # =========================================================
         list_nexus_db = ft.ListView(expand=True, spacing=10)
 
@@ -466,7 +450,6 @@ def main(page: ft.Page):
                 for f in files:
                     ext = f.lower().split('.')[-1]
                     p = os.path.join(EXPORT_DIR, f)
-                    
                     list_nexus_db.controls.append(
                         ft.Container(content=ft.Row([
                             ft.Text("🧊" if ext=="stl" else "🧩", size=24),
@@ -476,8 +459,7 @@ def main(page: ft.Page):
                             ft.TextButton("🗑️", on_click=lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], tooltip="Borrar")
                         ]), bgcolor="#161B22", padding=10, border_radius=8)
                     )
-            except Exception as e:
-                list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
+            except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
             page.update()
 
         def load_file(filepath):
@@ -485,12 +467,9 @@ def main(page: ft.Page):
             if ext == "stl":
                 shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
                 lbl_stl_status.value = f"✓ Activo: {fn}"; lbl_stl_status.color = "#00E676"
-                
-                # Sincroniza visualmente y carga herramienta STL
                 on_cat_click("Ultimate STL Forge")
                 dd_tool.value = "stl"
                 on_tool_change(None)
-                
                 set_tab(0); status.value = "✓ STL Listo en Forge"
             elif ext == "jscad":
                 txt_code.value = open(filepath).read()
@@ -499,12 +478,8 @@ def main(page: ft.Page):
 
         view_archivos = ft.Column([
             ft.ElevatedButton("🚀 INYECTAR ARCHIVO (WEB)", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf'), height=60),
-            ft.Row([
-                ft.Text("📁 NEXUS DB", color="white", weight="bold"), 
-                ft.ElevatedButton("🔄 ACTUALIZAR", on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", color="#00E5FF")
-            ], alignment="spaceBetween"),
-            ft.Divider(color="#30363D"),
-            list_nexus_db
+            ft.Row([ft.Text("📁 NEXUS DB", color="white", weight="bold"), ft.ElevatedButton("🔄 ACTUALIZAR", on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", color="#00E5FF")], alignment="spaceBetween"),
+            ft.Divider(color="#30363D"), list_nexus_db
         ], expand=True)
 
         main_container = ft.Container(content=view_constructor, expand=True)
@@ -521,8 +496,6 @@ def main(page: ft.Page):
         ])
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
-        
-        # Inicializamos en STL Forge de forma segura
         on_cat_click("Ultimate STL Forge")
 
     except Exception:
