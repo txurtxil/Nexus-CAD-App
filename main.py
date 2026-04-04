@@ -1,33 +1,19 @@
 import flet as ft
 import os, base64, json, threading, http.server, socket, time, warnings, traceback, shutil
 
-try:
-    import psutil; HAS_PSUTIL = True
-except ImportError:
-    HAS_PSUTIL = False
+try: import psutil; HAS_PSUTIL = True
+except ImportError: HAS_PSUTIL = False
 
 from urllib.parse import urlparse
-
 warnings.simplefilter("ignore", DeprecationWarning)
 
 # =========================================================
-# RUTAS, PERMISOS Y SERVIDOR
+# RUTAS Y SERVIDOR (NUEVA ARQUITECTURA FILES)
 # =========================================================
-try: os.system("termux-setup-storage")
-except: pass
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, "assets")
-EXPORT_DIR = os.path.join(BASE_DIR, "nexus_proyectos")
+EXPORT_DIR = os.path.join(BASE_DIR, "nexus_db")
 os.makedirs(EXPORT_DIR, exist_ok=True)
-
-def get_android_root():
-    for p in ["/storage/emulated/0", os.path.expanduser("~/storage/shared"), BASE_DIR]:
-        try: os.listdir(p); return p
-        except: pass
-    return BASE_DIR
-
-ANDROID_ROOT = get_android_root()
 
 def get_sys_info():
     cores = os.cpu_count() or 1
@@ -35,16 +21,23 @@ def get_sys_info():
     if HAS_PSUTIL: cpu_p = psutil.cpu_percent(); ram_p = psutil.virtual_memory().percent
     return cpu_p, ram_p, cores
 
+def get_lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]; s.close(); return ip
+    except: return "127.0.0.1"
+
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('0.0.0.0', 0)); LOCAL_PORT = s.getsockname()[1]
 except: LOCAL_PORT = 8556
 
+LAN_IP = get_lan_ip()
 LATEST_CODE_B64 = ""
 
 class NexusHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
-        if self.path == '/api/upload_stl':
+        if self.path == '/api/upload':
             cl = int(self.headers.get('Content-Length', 0))
             fn = self.headers.get('File-Name', 'uploaded_file.stl')
             if cl > 0:
@@ -58,29 +51,55 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         global LATEST_CODE_B64
         parsed = urlparse(self.path)
+        
+        # 1. API de Código
         if parsed.path == '/api/get_code_b64.json':
             self.send_response(200); self.send_header("Content-type", "application/json"); self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers()
             self.wfile.write(json.dumps({"code_b64": LATEST_CODE_B64, "stl_hash": str(time.time())}).encode())
             LATEST_CODE_B64 = "" 
+            
+        # 2. Servir el STL Importado (SOLUCIÓN AL BUCLE "cargando stl local...")
+        elif parsed.path == '/imported.stl':
+            filepath = os.path.join(EXPORT_DIR, "imported.stl")
+            if os.path.exists(filepath):
+                with open(filepath, "rb") as f:
+                    self.send_response(200); self.send_header("Content-type", "application/sla"); self.send_header("Access-Control-Allow-Origin", "*"); self.end_headers()
+                    self.wfile.write(f.read())
+            else: self.send_response(404); self.end_headers()
+
+        # 3. Interfaz de Inyección Web
         elif parsed.path == '/upload_ui':
-            html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+            html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="UTF-8"></head>
             <body style="background:#0B0E14; color:#E6EDF3; font-family:sans-serif; text-align:center; padding:20px;">
-                <h2 style="color:#00E5FF;">🚀 Inyección Web a NEXUS</h2>
+                <h2 style="color:#00E676;">🚀 INYECCIÓN A NEXUS DB</h2>
+                <p style="color:#8B949E; font-size:12px;">Sube STLs o JSCAD saltándote los bloqueos de Android.</p>
                 <div style="background:#161B22; padding:20px; border-radius:8px; border:1px solid #30363D; display:inline-block; width:90%; max-width:400px;">
                     <input type="file" id="f" style="margin-bottom:20px; color:white; width:100%;">
-                    <button onclick="up()" style="background:#00E676; color:black; padding:15px; width:100%; font-weight:bold; border:none; border-radius:8px;">INYECCIÓN DIRECTA (.STL o .JSCAD)</button>
+                    <button onclick="up()" style="background:#00E5FF; color:black; padding:15px; width:100%; font-weight:bold; border:none; border-radius:8px;">INYECCIÓN DIRECTA</button>
                     <p id="s" style="margin-top:20px; font-weight:bold;"></p>
                 </div>
                 <script>function up(){var f=document.getElementById('f').files[0]; if(!f){return;}
                 document.getElementById('s').style.color='#FFAB00'; document.getElementById('s').innerText='Subiendo...';
-                var r=new FileReader(); r.onload=function(e){ fetch('/api/upload_stl', {method:'POST', headers:{'File-Name':f.name}, body:e.target.result})
-                .then(()=>{document.getElementById('s').style.color='#00E676'; document.getElementById('s').innerText='✓ ¡ÉXITO! Vuelve a NEXUS.';});}; r.readAsArrayBuffer(f);}</script></body></html>"""
+                var r=new FileReader(); r.onload=function(e){ fetch('/api/upload', {method:'POST', headers:{'File-Name':f.name}, body:e.target.result})
+                .then(()=>{document.getElementById('s').style.color='#00E676'; document.getElementById('s').innerText='✓ ¡ÉXITO! Vuelve a la App y pulsa ACTUALIZAR DB.';});}; r.readAsArrayBuffer(f);}</script></body></html>"""
             self.send_response(200); self.send_header("Content-type", "text/html"); self.end_headers(); self.wfile.write(html.encode('utf-8'))
+            
+        # 4. Descargar Archivos a Android Nativamente
+        elif parsed.path.startswith('/exportar/'):
+            filename = parsed.path.replace('/exportar/', '')
+            filepath = os.path.join(EXPORT_DIR, filename)
+            if os.path.exists(filepath):
+                with open(filepath, "rb") as f:
+                    self.send_response(200); self.send_header("Content-Disposition", f'attachment; filename="{filename}"'); self.end_headers(); self.wfile.write(f.read())
+            else: self.send_response(404); self.end_headers()
+            
+        # 5. Archivos del Motor WebGL
         else:
             try:
                 fn = self.path.strip("/") or "openscad_engine.html"
                 with open(os.path.join(ASSETS_DIR, fn), "rb") as f: self.send_response(200); self.end_headers(); self.wfile.write(f.read())
             except: self.send_response(404); self.end_headers()
+            
     def log_message(self, *args): pass
 
 threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), NexusHandler).serve_forever(), daemon=True).start()
@@ -90,14 +109,14 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v24.2 MASTER"
+        page.title = "NEXUS CAD v25.0 OMEGA"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v24.2 MASTER | All-in-One Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v25.0 OMEGA | Sistema Estable", color="#00E676", weight="bold")
         T_INICIAL = "function main() {\n  return CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n}"
-        txt_code = ft.TextField(label="Código JS-CSG (Editable en RAW)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
+        txt_code = ft.TextField(multiline=True, min_lines=10, max_lines=20, value=T_INICIAL, bgcolor="#0B0E14", color="#58A6FF", border_color="#30363D", text_size=12)
 
         herramienta_actual = "custom"
         modo_ensamble = False
@@ -111,7 +130,7 @@ def main(page: ft.Page):
             if is_int: sl.divisions = int(max_v - min_v)
             def internal_change(e):
                 txt_val.value = f"{int(sl.value) if is_int else sl.value:.1f}"
-                try: txt_val.update() # Fix crash
+                try: txt_val.update()
                 except: pass
                 if not modo_ensamble: update_code_wrapper()
             sl.on_change = internal_change
@@ -125,7 +144,6 @@ def main(page: ft.Page):
         sl_g_l, r_g_l = create_slider("Largo (GL)", 1, 300, 50, False)
         sl_g_h, r_g_h = create_slider("Alto (GH)", 1, 300, 20, False)
         sl_g_t, r_g_t = create_slider("Grosor (GT)", 0.5, 20, 2, False)
-        sl_g_tol, r_g_tol = create_slider("Tol. (G_TOL)", 0.0, 2.0, 0.2, False)
 
         sw_ensamble = ft.Switch(label="Activar Ensamblador", value=False, active_color="#FFAB00")
         def toggle_ensamble(e):
@@ -146,17 +164,15 @@ def main(page: ft.Page):
                 if item["op"] == "base": fv = item["var"]
                 else: fc += f"  {fv} = {fv}.{item['op']}({item['var']});\n"
             txt_code.value = fc + f"  return {fv};\n}}"
-            try: txt_code.update() # Fix crash
+            try: txt_code.update()
             except: pass
             page.update()
 
         def clear_editor():
-            nonlocal ensamble_stack
-            ensamble_stack = []
+            nonlocal ensamble_stack; ensamble_stack = []
             txt_code.value = "function main() {\n  return CSG.cube({radius:[0,0,0]});\n}"
-            status.value = "✓ Código borrado."
-            status.color = "#B71C1C"
-            try: txt_code.update() # Fix crash
+            status.value = "✓ Código borrado."; status.color = "#B71C1C"
+            try: txt_code.update()
             except: pass
             page.update()
 
@@ -168,11 +184,11 @@ def main(page: ft.Page):
 
         panel_globales = ft.Container(content=ft.Column([
             ft.Row([ft.Text("🌐 PARÁMETROS GLOBALES", color="#00E5FF", weight="bold", size=11), sw_ensamble], alignment="spaceBetween"),
-            r_g_w, r_g_l, r_g_h, r_g_t, r_g_tol, panel_ensamble_ops
+            r_g_w, r_g_l, r_g_h, r_g_t, panel_ensamble_ops
         ]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#333333"))
 
         def prepare_js_payload():
-            h = f"  var GW={sl_g_w.value}; var GL={sl_g_l.value}; var GH={sl_g_h.value}; var GT={sl_g_t.value}; var G_TOL={sl_g_tol.value};\n"
+            h = f"  var GW={sl_g_w.value}; var GL={sl_g_l.value}; var GH={sl_g_h.value}; var GT={sl_g_t.value};\n"
             c = txt_code.value
             return c.replace("function main() {", "function main() {\n" + h, 1) if "function main() {" in c else h + "\n" + c
 
@@ -180,24 +196,7 @@ def main(page: ft.Page):
             global LATEST_CODE_B64; LATEST_CODE_B64 = base64.b64encode(prepare_js_payload().encode('utf-8')).decode()
             set_tab(1)
 
-        # === AYUDA IA ===
-        def inject_snippet(code):
-            c = txt_code.value; pos = c.rfind('return ')
-            txt_code.value = (c[:pos] + code + "\n  " + c[pos:]) if pos != -1 else (c + "\n" + code)
-            try: txt_code.update() # Fix crash
-            except: pass
-
-        help_box = ft.ExpansionTile(title=ft.Text("💡 Ayuda IA / Plantillas", color="#00E5FF", size=12, weight="bold"), collapsed_text_color="#00E5FF", controls=[
-            ft.Container(padding=10, bgcolor="#161B22", border_radius=8, content=ft.Column([
-                ft.Text("Copia este Prompt para ChatGPT/Gemini:", weight="bold", color="#8B949E", size=11),
-                ft.TextField(value="Escribe código para OpenJSCAD. Función main() obligatoria. Devuelve el objeto final con 'return'. Usa las variables globales GW (ancho), GL (largo), GH (alto). Operaciones booleanas válidas: obj.union(b), obj.subtract(b), obj.intersect(b).", read_only=True, text_size=10, multiline=True),
-                ft.Row([ft.ElevatedButton("+ Cubo Test", on_click=lambda _: inject_snippet("var c = CSG.cube({center:[0,0,0], radius:[10,10,10]});")), ft.ElevatedButton("+ Cilindro Test", on_click=lambda _: inject_snippet("var cil = CSG.cylinder({start:[0,0,0], end:[0,0,10], radius:5});"))])
-            ]))
-        ])
-
-        # =========================================================
-        # PANELES DE HERRAMIENTAS (>30) + STL FORGE
-        # =========================================================
+        # === PANELES DE HERRAMIENTAS ===
         panels = {}
 
         # 1. BÁSICOS
@@ -241,9 +240,9 @@ def main(page: ft.Page):
         sw_txt_grabado = ft.Switch(label="Grabado (Hueco)", value=False, active_color="#00E5FF")
         tf_texto.on_change=update_code_wrapper; dd_txt_estilo.on_change=update_code_wrapper; dd_txt_base.on_change=update_code_wrapper; sw_txt_grabado.on_change=update_code_wrapper
         panels["texto"] = mk_col("Placas de Texto", "Genera texto 3D o placas identificativas.", [tf_texto, dd_txt_estilo, dd_txt_base, sw_txt_grabado])
-        panels["custom"] = mk_col("Modo Código Libre", "Programa Javascript CSG en la pestaña RAW.", [])
+        panels["custom"] = mk_col("Modo Código Libre", "Edita directamente en el panel inferior (RAW).", [])
 
-        # 5. ULTIMATE STL FORGE
+        # 5. ULTIMATE STL FORGE (CON FIX DE IMPORTACIÓN)
         lbl_stl_status = ft.Text("Ningún STL cargado aún.", color="#8B949E", size=11)
         sl_stl_sc, r_stl_sc = create_slider("Escala (%)", 1, 500, 100, True)
         sl_stl_x, r_stl_x = create_slider("Mover X", -200, 200, 0, False)
@@ -251,11 +250,11 @@ def main(page: ft.Page):
         sl_stl_z, r_stl_z = create_slider("Mover Z", -200, 200, 0, False)
         panel_stl_transform = ft.Container(content=ft.Column([
             ft.Row([ft.Text("🔄 Transformación Base STL", color="#00E676", weight="bold"), lbl_stl_status]),
-            ft.ElevatedButton("📂 ABRIR EXPLORADOR (FILES)", on_click=lambda _: set_tab(2), bgcolor="#00E5FF", color="black", width=float('inf'), height=35),
+            ft.ElevatedButton("📂 IR A NEXUS DB (FILES)", on_click=lambda _: set_tab(2), bgcolor="#00E5FF", color="black", width=float('inf'), height=35),
             r_stl_sc, r_stl_x, r_stl_y, r_stl_z
         ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"), visible=False)
 
-        panels["stl"] = mk_col("Visor Híbrido", "Muestra el STL para aplicar ensamblajes.", [])
+        panels["stl"] = mk_col("Visor Híbrido", "Muestra el STL modificado por la Transformación Base.", [])
         sl_stlf_z, r_stlf_z = create_slider("Corte Inf (Z)", 0, 50, 1, False)
         panels["stl_flatten"] = mk_col("Aplanar Base", "Corta la base para dejarla perfectamente plana.", [r_stlf_z])
         dd_stls_axis = ft.Dropdown(options=[ft.dropdown.Option("X"), ft.dropdown.Option("Y"), ft.dropdown.Option("Z")], value="Z", bgcolor="#1E1E1E"); dd_stls_axis.on_change=update_code_wrapper
@@ -273,17 +272,14 @@ def main(page: ft.Page):
         sl_stle_r, r_stle_r = create_slider("Radio Discos", 5, 30, 15, False); sl_stle_d, r_stle_d = create_slider("Apertura XY", 10, 200, 50, False)
         panels["stl_ears"] = mk_col("Discos Anti-Warp", "Parches de 0.4mm en esquinas.", [r_stle_r, r_stle_d])
 
-        # === GENERADOR CORE JAVASCRIPT ===
+        # === GENERADOR JAVASCRIPT (REESCRITO, 100% INMUNE A CRASHES STL) ===
         def get_stl_base_js():
             return f"""
   var sc = {sl_stl_sc.value / 100.0}; var tx = {sl_stl_x.value}; var ty = {sl_stl_y.value}; var tz = {sl_stl_z.value};
-  var stlParts = Array.isArray(IMPORTED_STL) ? IMPORTED_STL : [IMPORTED_STL]; var finalPolys = [];
-  stlParts.forEach(function(part) {{ var polys = part.polygons || (part.toPolygons ? part.toPolygons() : []);
-      polys.forEach(function(p) {{ var newVerts = p.vertices.map(function(v) {{
-              var VecClass = (typeof CSG.Vector3D !== 'undefined') ? CSG.Vector3D : ((typeof CSG.Vector !== 'undefined') ? CSG.Vector : null);
-              return new CSG.Vertex(new VecClass(v.pos.x*sc+tx, v.pos.y*sc+ty, v.pos.z*sc+tz), new VecClass(v.normal.x, v.normal.y, v.normal.z)); }});
-          finalPolys.push(new CSG.Polygon(newVerts, p.shared)); }}); }});
-  var dron = CSG.fromPolygons(finalPolys); if(!dron.polygons || dron.polygons.length === 0) return CSG.cube({{radius:[0.1,0.1,0.1]}});
+  var dron = typeof IMPORTED_STL !== 'undefined' ? IMPORTED_STL : null;
+  if(dron && Array.isArray(dron)) dron = dron[0];
+  if(!dron || !dron.polygons) {{ return CSG.cube({{radius:[0.1,0.1,0.1]}}); }}
+  dron = dron.scale([sc, sc, sc]).translate([tx, ty, tz]);
 """
 
         def generate_param_code():
@@ -319,72 +315,44 @@ def main(page: ft.Page):
                     code += f"  var c4=CSG.cylinder({{start:[{-d/2},{-d/2},0], end:[{-d/2},{-d/2},0.4], radius:{r}, slices:32}});\n"
                     code += f"  return dron.union(c1).union(c2).union(c3).union(c4);\n}}"
             else:
-                if h == "cubo":
-                    code += f"  var c = CSG.cube({{center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]}});\n"
-                    code += f"  if({sl_c_g.value} > 0) c = c.subtract(CSG.cube({{center:[0,0,GH/2+1], radius:[GW/2-{sl_c_g.value}, GL/2-{sl_c_g.value}, GH/2]}}));\n  return c;\n}}"
-                elif h == "cilindro":
-                    code += f"  var c = CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:{int(sl_p_l.value)}}});\n"
-                    code += f"  if({sl_p_r.value} > 0) c = c.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,GH+1], radius:{sl_p_r.value}, slices:{int(sl_p_l.value)}}}));\n  return c;\n}}"
+                if h == "cubo": code += f"  var c = CSG.cube({{center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]}});\n  if({sl_c_g.value} > 0) c = c.subtract(CSG.cube({{center:[0,0,GH/2+1], radius:[GW/2-{sl_c_g.value}, GL/2-{sl_c_g.value}, GH/2]}}));\n  return c;\n}}"
+                elif h == "cilindro": code += f"  var c = CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:{int(sl_p_l.value)}}});\n  if({sl_p_r.value} > 0) c = c.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,GH+1], radius:{sl_p_r.value}, slices:{int(sl_p_l.value)}}}));\n  return c;\n}}"
                 elif h == "escuadra":
                     L = sl_l_l.value; A = sl_l_a.value; H = sl_l_h.value
-                    code += f"  var base = CSG.cube({{center:[{L/2}, 0, GT/2], radius:[{L/2}, {A/2}, GT/2]}});\n"
-                    code += f"  var pared = CSG.cube({{center:[GT/2, 0, {L/2}], radius:[GT/2, {A/2}, {L/2}]}});\n"
-                    code += f"  var res = base.union(pared);\n"
+                    code += f"  var base = CSG.cube({{center:[{L/2}, 0, GT/2], radius:[{L/2}, {A/2}, GT/2]}});\n  var pared = CSG.cube({{center:[GT/2, 0, {L/2}], radius:[GT/2, {A/2}, {L/2}]}});\n  var res = base.union(pared);\n"
                     code += f"  if({H} > 0) res = res.subtract(CSG.cylinder({{start:[{L/2},0,-1], end:[{L/2},0,GT+1], radius:{H}, slices:16}})).subtract(CSG.cylinder({{start:[-1,0,{L/2}], end:[GT+1,0,{L/2}], radius:{H}, slices:16}}));\n  return res;\n}}"
                 elif h == "engranaje":
                     D = sl_e_d.value; R = sl_e_r.value; E = sl_e_e.value
-                    code += f"  var base = CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:{R}, slices:32}});\n"
-                    code += f"  var dientes = null; for(var i=0; i<{D}; i++) {{ var a = (i/{D})*Math.PI*2;\n"
-                    code += f"    var d = CSG.cube({{center:[Math.cos(a)*{R}, Math.sin(a)*{R}, GH/2], radius:[{R/4}, {R/8}, GH/2]}});\n"
-                    code += f"    d = d.rotateZ(a*180/Math.PI); if(dientes==null) dientes=d; else dientes=dientes.union(d); }}\n"
+                    code += f"  var base = CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:{R}, slices:32}});\n  var dientes = null; for(var i=0; i<{D}; i++) {{ var a = (i/{D})*Math.PI*2;\n    var d = CSG.cube({{center:[Math.cos(a)*{R}, Math.sin(a)*{R}, GH/2], radius:[{R/4}, {R/8}, GH/2]}});\n    d = d.rotateZ(a*180/Math.PI); if(dientes==null) dientes=d; else dientes=dientes.union(d); }}\n"
                     code += f"  var res = base.union(dientes);\n  if({E} > 0) res = res.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,GH+1], radius:{E}, slices:16}}));\n  return res;\n}}"
-                elif h == "pcb":
-                    X = sl_pcb_x.value; Y = sl_pcb_y.value
-                    code += f"  return CSG.cube({{center:[0,0,GH/2], radius:[{X/2+GT}, {Y/2+GT}, GH/2]}}).subtract(CSG.cube({{center:[0,0,GH/2+GT], radius:[{X/2}, {Y/2}, GH/2]}}));\n}}"
+                elif h == "pcb": code += f"  return CSG.cube({{center:[0,0,GH/2], radius:[{sl_pcb_x.value/2+GT}, {sl_pcb_y.value/2+GT}, GH/2]}}).subtract(CSG.cube({{center:[0,0,GH/2+GT], radius:[{sl_pcb_x.value/2}, {sl_pcb_y.value/2}, GH/2]}}));\n}}"
                 elif h == "bisagra":
                     L = sl_bi_l.value; D = sl_bi_d.value; tol = 0.4
                     code += f"  var p1 = CSG.cube({{center:[{-L/4}, 0, {D/2}], radius:[{L/4}, {L/2}, {D/4}]}}).union(CSG.cylinder({{start:[0,{-L/2}, {D/2}], end:[0,{-L/6}, {D/2}], radius:{D/2}, slices:32}})).union(CSG.cylinder({{start:[0,{L/6}, {D/2}], end:[0,{L/2}, {D/2}], radius:{D/2}, slices:32}}));\n"
-                    code += f"  var p2 = CSG.cube({{center:[{L/4}, 0, {D/2}], radius:[{L/4}, {L/2}, {D/4}]}}).union(CSG.cylinder({{start:[0,{-L/6+tol}, {D/2}], end:[0,{L/6-tol}, {D/2}], radius:{D/2}, slices:32}}));\n"
-                    code += f"  return p1.union(p2).union(CSG.cylinder({{start:[0,{-L/2}, {D/2}], end:[0,{L/2}, {D/2}], radius:{D/2-tol}, slices:16}}));\n}}"
+                    code += f"  var p2 = CSG.cube({{center:[{L/4}, 0, {D/2}], radius:[{L/4}, {L/2}, {D/4}]}}).union(CSG.cylinder({{start:[0,{-L/6+tol}, {D/2}], end:[0,{L/6-tol}, {D/2}], radius:{D/2}, slices:32}}));\n  return p1.union(p2).union(CSG.cylinder({{start:[0,{-L/2}, {D/2}], end:[0,{L/2}, {D/2}], radius:{D/2-tol}, slices:16}}));\n}}"
                 elif h == "fijacion":
                     M = sl_fij_m.value; L = sl_fij_l.value
                     code += f"  var hex = CSG.cylinder({{start:[0,0,0], end:[0,0,{M*0.8}], radius:{M*0.866}, slices:6}});\n"
-                    code += f"  if({L} == 0) return hex.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,{M*0.8+1}], radius:{M/2}, slices:16}}));\n"
-                    code += f"  return hex.union(CSG.cylinder({{start:[0,0,{M*0.8}], end:[0,0,{M*0.8+L}], radius:{M/2}, slices:16}}));\n}}"
+                    code += f"  if({L} == 0) return hex.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,{M*0.8+1}], radius:{M/2}, slices:16}}));\n  return hex.union(CSG.cylinder({{start:[0,0,{M*0.8}], end:[0,0,{M*0.8+L}], radius:{M/2}, slices:16}}));\n}}"
                 elif h == "polea":
                     T = sl_pol_t.value; D = sl_pol_d.value; R = (T*2.0)/(2*Math.PI)
                     code += f"  return CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:{R}, slices:32}}).union(CSG.cylinder({{start:[0,0,-1], end:[0,0,0], radius:{R+1}, slices:32}})).union(CSG.cylinder({{start:[0,0,GH], end:[0,0,GH+1], radius:{R+1}, slices:32}})).subtract(CSG.cylinder({{start:[0,0,-2], end:[0,0,GH+2], radius:{D/2}, slices:16}}));\n}}"
                 elif h == "muelle":
-                    code += f"  var res = null; var steps = {int(sl_mue_v.value*32)};\n"
-                    code += f"  for(var i=0; i<steps; i++) {{ var a = (i/32)*Math.PI*2;\n"
-                    code += f"    var seg = CSG.sphere({{center:[Math.cos(a)*{sl_mue_r.value}, Math.sin(a)*{sl_mue_r.value}, i*(GH/steps)], radius:GT, resolution:8}});\n"
-                    code += f"    if(res==null) res=seg; else res=res.union(seg); }}\n  return res;\n}}"
+                    code += f"  var res = null; var steps = {int(sl_mue_v.value*32)};\n  for(var i=0; i<steps; i++) {{ var a = (i/32)*Math.PI*2;\n    var seg = CSG.sphere({{center:[Math.cos(a)*{sl_mue_r.value}, Math.sin(a)*{sl_mue_r.value}, i*(GH/steps)], radius:GT, resolution:8}});\n    if(res==null) res=seg; else res=res.union(seg); }}\n  return res;\n}}"
                 elif h == "matriz_lin":
                     F = sl_alin_f.value; C = sl_alin_c.value; D = sl_alin_d.value
-                    code += f"  var obj = CSG.cube({{center:[0,0,GH/2], radius:[5, 5, GH/2]}}); var res = null;\n"
-                    code += f"  for(var x=0; x<{C}; x++) {{ for(var y=0; y<{F}; y++) {{\n"
-                    code += f"    var inst = obj.translate([x*{D}, y*{D}, 0]); if(res==null) res=inst; else res=res.union(inst);\n  }} }}\n  return res;\n}}"
+                    code += f"  var obj = CSG.cube({{center:[0,0,GH/2], radius:[5, 5, GH/2]}}); var res = null;\n  for(var x=0; x<{C}; x++) {{ for(var y=0; y<{F}; y++) {{\n    var inst = obj.translate([x*{D}, y*{D}, 0]); if(res==null) res=inst; else res=res.union(inst);\n  }} }}\n  return res;\n}}"
                 elif h == "matriz_pol":
                     N = sl_apol_n.value; R = sl_apol_r.value
-                    code += f"  var obj = CSG.cylinder({{start:[{R},0,0], end:[{R},0,GH], radius:5, slices:16}}); var res = null;\n"
-                    code += f"  for(var i=0; i<{N}; i++) {{ var inst = obj.rotateZ((i/{N})*360); if(res==null) res=inst; else res=res.union(inst); }}\n  return res;\n}}"
+                    code += f"  var obj = CSG.cylinder({{start:[{R},0,0], end:[{R},0,GH], radius:5, slices:16}}); var res = null;\n  for(var i=0; i<{N}; i++) {{ var inst = obj.rotateZ((i/{N})*360); if(res==null) res=inst; else res=res.union(inst); }}\n  return res;\n}}"
                 elif h == "panal":
-                    code += f"  var hex_r = {sl_pan_r.value}; var dx = hex_r*1.732+GT; var dy = hex_r*1.5+GT;\n"
-                    code += f"  var base = CSG.cube({{center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]}}); var holes = null;\n"
-                    code += f"  for(var x = -GW/2; x < GW/2; x += dx) {{ for(var y = -GL/2; y < GL/2; y += dy) {{\n"
-                    code += f"      var offset = (Math.abs(Math.round(y/dy)) % 2 === 1) ? dx/2 : 0;\n"
-                    code += f"      var hex = CSG.cylinder({{start:[x+offset, y, -1], end:[x+offset, y, GH+1], radius:hex_r, slices:6}});\n"
-                    code += f"      if(holes === null) holes = hex; else holes = holes.union(hex);\n  }} }}\n  return base.subtract(holes);\n}}"
+                    code += f"  var hex_r = {sl_pan_r.value}; var dx = hex_r*1.732+GT; var dy = hex_r*1.5+GT;\n  var base = CSG.cube({{center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]}}); var holes = null;\n  for(var x = -GW/2; x < GW/2; x += dx) {{ for(var y = -GL/2; y < GL/2; y += dy) {{\n      var offset = (Math.abs(Math.round(y/dy)) % 2 === 1) ? dx/2 : 0;\n      var hex = CSG.cylinder({{start:[x+offset, y, -1], end:[x+offset, y, GH+1], radius:hex_r, slices:6}});\n      if(holes === null) holes = hex; else holes = holes.union(hex);\n  }} }}\n  return base.subtract(holes);\n}}"
                 elif h == "cremallera":
                     D = sl_crem_d.value; M = sl_crem_m.value; P = M * Math.PI; L = D * P
-                    code += f"  var base = CSG.cube({{center:[{L/2}, -{M}, GH/2], radius:[{L/2}, {M}, GH/2]}}); var dientes = null;\n"
-                    code += f"  for(var i=0; i<{D}; i++) {{ var d = CSG.cube({{center:[i*{P}+{P/2}, {M/2}, GH/2], radius:[{M/2}, {M}, GH/2]}});\n"
-                    code += f"    if(dientes==null) dientes=d; else dientes=dientes.union(d); }}\n  return base.union(dientes);\n}}"
+                    code += f"  var base = CSG.cube({{center:[{L/2}, -{M}, GH/2], radius:[{L/2}, {M}, GH/2]}}); var dientes = null;\n  for(var i=0; i<{D}; i++) {{ var d = CSG.cube({{center:[i*{P}+{P/2}, {M/2}, GH/2], radius:[{M/2}, {M}, GH/2]}});\n    if(dientes==null) dientes=d; else dientes=dientes.union(d); }}\n  return base.union(dientes);\n}}"
                 elif h == "estrella":
                     P = sl_perf_p.value; RE = sl_perf_re.value
-                    code += f"  var res = null;\n  for(var i=0; i<{P}; i++) {{ var a1=(i/{P})*360;\n"
-                    code += f"    var cyl = CSG.cylinder({{start:[0,0,0], end:[{RE},0,0], radius:GH/2, slices:4}}).rotateZ(a1);\n"
-                    code += f"    if(res==null) res=cyl; else res=res.union(cyl); }}\n  return res;\n}}"
+                    code += f"  var res = null;\n  for(var i=0; i<{P}; i++) {{ var a1=(i/{P})*360;\n    var cyl = CSG.cylinder({{start:[0,0,0], end:[{RE},0,0], radius:GH/2, slices:4}}).rotateZ(a1);\n    if(res==null) res=cyl; else res=res.union(cyl); }}\n  return res;\n}}"
                 elif h == "texto":
                     txt = tf_texto.value.upper()[:15] or " "
                     code += f"  var font = {{ 'A':[14,17,31,17,17], ' ':[0,0,0,0,0] }};\n"
@@ -394,11 +362,11 @@ def main(page: ft.Page):
 
             if not modo_ensamble:
                 txt_code.value = code
-                try: txt_code.update() # Fix crash definitivo
+                try: txt_code.update()
                 except: pass
 
         # =========================================================
-        # COMBOS Y CATEGORÍAS UI
+        # GESTIÓN DE COMBOS SIN CRASHES
         # =========================================================
         categorias = {
             "Geometría Básica": [("cubo", "Cubo Paramétrico"), ("cilindro", "Cilindro / Hueco"), ("escuadra", "Escuadra Tipo L"), ("pcb", "Caja PCB"), ("bisagra", "Bisagra PIP")],
@@ -408,14 +376,15 @@ def main(page: ft.Page):
             "Texto y Especiales": [("texto", "Placas Texto"), ("custom", "Código Libre RAW")]
         }
 
-        dd_cat = ft.Dropdown(options=[ft.dropdown.Option(k) for k in categorias.keys()], value="Geometría Básica", width=180, bgcolor="#161B22")
-        dd_tool = ft.Dropdown(width=180, bgcolor="#161B22")
+        dd_cat = ft.Dropdown(options=[ft.dropdown.Option(k) for k in categorias.keys()], value="Geometría Básica", width=160, bgcolor="#161B22")
+        dd_tool = ft.Dropdown(width=160, bgcolor="#161B22")
 
         def on_cat_change(e):
             dd_tool.options = [ft.dropdown.Option(key=k, text=v) for k, v in categorias[dd_cat.value]]
             dd_tool.value = categorias[dd_cat.value][0][0]
+            try: dd_tool.update()
+            except: pass
             on_tool_change(None)
-            page.update()
 
         def on_tool_change(e):
             nonlocal herramienta_actual; herramienta_actual = dd_tool.value
@@ -427,26 +396,26 @@ def main(page: ft.Page):
         dd_cat.on_change = on_cat_change; dd_tool.on_change = on_tool_change
         panel_herramientas = ft.Container(content=ft.Column(list(panels.values())), padding=0)
 
+        # Editor Integrado en la Pestaña CODE
+        editor_exp = ft.ExpansionTile(title=ft.Text("📝 CÓDIGO FUENTE RAW", color="#FFAB00", weight="bold"), controls=[txt_code], collapsed_text_color="#FFAB00", text_color="#FFAB00")
+        
         view_constructor = ft.Column([
-            ft.Row([ft.Text("Categoría:", color="#8B949E", size=11), dd_cat, ft.Text("Tool:", color="#8B949E", size=11), dd_tool], wrap=True),
+            ft.Row([ft.Text("Cat:", color="#8B949E", size=11), dd_cat, ft.Text("Tool:", color="#8B949E", size=11), dd_tool], wrap=True),
             ft.Divider(color="#30363D"),
-            panel_globales, panel_stl_transform, panel_herramientas, help_box,
+            panel_globales, panel_stl_transform, panel_herramientas,
+            editor_exp,
             ft.Container(height=5),
-            ft.ElevatedButton("▶ ENVIAR AL WORKER (RENDER 3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
+            ft.ElevatedButton("▶ ENVIAR A RENDER 3D", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
         ], expand=True, scroll="auto")
 
-        view_editor = ft.Column([
-            ft.Row([ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project_to_nexus(), color="white", bgcolor="#0D47A1")], scroll="auto"), txt_code
-        ], expand=True)
-
         # =========================================================
-        # VISOR Y EXPLORADOR FILES
+        # VISOR VR Y 3D
         # =========================================================
         pb_cpu = ft.ProgressBar(color="#FFAB00", bgcolor="#30363D", value=0, expand=True); txt_cpu_val = ft.Text("0.0%", size=11, color="#FFAB00", width=40)
         pb_ram = ft.ProgressBar(color="#00E5FF", bgcolor="#30363D", value=0, expand=True); txt_ram_val = ft.Text("0.0%", size=11, color="#00E5FF", width=40)
         
         hw_panel = ft.Container(content=ft.Column([
-            ft.Text("📊 TELEMETRÍA", size=11, color="#E6EDF3", weight="bold"),
+            ft.Text("📊 TELEMETRÍA HW", size=11, color="#E6EDF3", weight="bold"),
             ft.Row([ft.Text("CPU", size=11, color="#FFAB00", weight="bold", width=30), pb_cpu, txt_cpu_val]),
             ft.Row([ft.Text("RAM", size=11, color="#00E5FF", weight="bold", width=30), pb_ram, txt_ram_val])
         ], spacing=5), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#333333"))
@@ -459,77 +428,85 @@ def main(page: ft.Page):
                         cpu, ram, cores = get_sys_info()
                         pb_cpu.value = cpu / 100.0; txt_cpu_val.value = f"{cpu:.1f}%"
                         pb_ram.value = ram / 100.0; txt_ram_val.value = f"{ram:.1f}%"
-                        try: hw_panel.update() # Fix crash
+                        try: hw_panel.update()
                         except: pass
                 except: pass
         threading.Thread(target=hw_monitor_loop, daemon=True).start()
 
         view_visor = ft.Column([
             ft.Container(height=5), hw_panel, ft.Container(height=5),
-            ft.ElevatedButton("🔄 ABRIR VISOR 3D (LOCAL)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", color="black", bgcolor="#00E676", height=60, expand=True)
+            ft.Container(content=ft.Column([
+                ft.Text("🥽 MODO GAFAS VR O PC", color="#00E5FF", weight="bold"),
+                ft.Text("Abre este enlace en el navegador de tus Quest, Pico o PC de la misma red WiFi:", size=11, color="#8B949E"),
+                ft.Text(f"http://{LAN_IP}:{LOCAL_PORT}/", size=16, color="#00E676", weight="bold", selectable=True)
+            ]), bgcolor="#161B22", padding=15, border_radius=8, border=ft.border.all(1, "#00E5FF")),
+            ft.Container(height=5),
+            ft.ElevatedButton("🔄 ABRIR VISOR 3D (AQUÍ)", url=f"http://127.0.0.1:{LOCAL_PORT}/", color="black", bgcolor="#00E676", height=60, expand=True)
         ], expand=True, scroll="auto")
 
-        current_android_dir = ANDROID_ROOT
-        tf_path = ft.TextField(value=current_android_dir, expand=True, bgcolor="#161B22", height=40, text_size=12)
-        list_android = ft.ListView(expand=True, spacing=5)
+        # =========================================================
+        # ECOSISTEMA FILES (100% INYECCIÓN WEB)
+        # =========================================================
+        list_nexus_db = ft.ListView(expand=True, spacing=10)
 
-        def file_action(filepath):
-            ext = filepath.lower().split('.')[-1] if '.' in filepath else ''
+        def exportar_archivo(filename):
+            page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/exportar/{filename}")
+            status.value = f"✓ Descarga a Android iniciada: {filename}"; page.update()
+
+        def load_file_to_cad(filepath):
+            fn = os.path.basename(filepath)
+            ext = fn.lower().split('.')[-1]
             if ext == "stl":
-                try: 
+                try:
                     shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
-                    lbl_stl_status.value = f"✓ STL Listo: {os.path.basename(filepath)}"
-                    lbl_stl_status.color = "#00E676"
-                    
-                    dd_cat.value = "Ultimate STL Forge"; on_cat_change(None)
-                    dd_tool.value = "stl"; on_tool_change(None)
-                    set_tab(0) 
-                    status.value = "✓ STL Cargado. Listo para modificar."
+                    lbl_stl_status.value = f"✓ STL Listo: {fn}"; lbl_stl_status.color = "#00E676"
+                    dd_cat.value = "Ultimate STL Forge"; on_cat_change(None); dd_tool.value = "stl"; on_tool_change(None)
+                    set_tab(0); status.value = "✓ STL Cargado. Listo para modificar."
                 except Exception as e: status.value = f"❌ Error: {e}"; status.color = "red"
             elif ext == "jscad":
-                try: 
-                    txt_code.value = open(filepath).read(); set_tab(3); 
-                    status.value = f"✓ Código cargado."; status.color = "#00E676"
+                try:
+                    txt_code.value = open(filepath).read()
+                    editor_exp.expanded = True # Abrimos el editor automáticamente
+                    set_tab(0); status.value = f"✓ Código cargado."; status.color = "#00E676"
                 except Exception as e: status.value = f"❌ Error: {e}"; status.color = "red"
             page.update()
 
-        def refresh_explorer(path):
-            list_android.controls.clear()
+        def delete_file(filepath):
+            try: os.remove(filepath); refresh_nexus_db()
+            except: pass
+
+        def refresh_nexus_db():
+            list_nexus_db.controls.clear()
             try:
-                items = os.listdir(path); dirs, files = [], []
-                for item in items:
-                    if os.path.isdir(os.path.join(path, item)): dirs.append(item)
-                    else: files.append(item)
-                dirs.sort(); files.sort()
-                if path not in ["/", "/storage", "/storage/emulated"]:
-                    list_android.controls.append(ft.ListTile(leading=ft.Text("⬆️", size=24), title=ft.Text(".. (Subir nivel)", color="white"), on_click=lambda e: nav_to(os.path.dirname(path))))
-                for d in dirs:
-                    if not d.startswith('.'): list_android.controls.append(ft.ListTile(leading=ft.Text("📁", size=24), title=ft.Text(d, color="#E6EDF3"), on_click=lambda e, p=os.path.join(path, d): nav_to(p)))
+                files = [f for f in os.listdir(EXPORT_DIR) if not f.startswith('.') and f != "imported.stl"]
+                files.sort(key=lambda x: os.path.getmtime(os.path.join(EXPORT_DIR, x)), reverse=True)
                 for f in files:
-                    ext = f.lower().split('.')[-1] if '.' in f else ''
-                    icon = "🧊" if ext=="stl" else ("🧩" if ext=="jscad" else "📄"); color = "#00E676" if ext=="stl" else ("#00E5FF" if ext=="jscad" else "#8B949E")
-                    list_android.controls.append(ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), on_click=lambda e, p=os.path.join(path, f): file_action(p)))
-            except Exception:
-                list_android.controls.append(ft.Text("Carpeta Restringida (Android 11+).", color="red", weight="bold"))
-                list_android.controls.append(ft.Text("Usa la Inyección Web de arriba.", color="#FFAB00"))
-            tf_path.value = path; page.update()
-
-        def nav_to(path): nonlocal current_android_dir; current_android_dir = path; refresh_explorer(path)
-
-        def save_project_to_nexus():
-            fname = f"nexus_{int(time.time())}.jscad"
-            with open(os.path.join(EXPORT_DIR, fname), "w") as f: f.write(txt_code.value)
-            status.value = f"✓ Guardado en: {fname}"; page.update()
+                    ext = f.lower().split('.')[-1]
+                    p = os.path.join(EXPORT_DIR, f)
+                    icon = "🧊" if ext=="stl" else ("🧩" if ext=="jscad" else "📄")
+                    color = "#00E676" if ext=="stl" else ("#00E5FF" if ext=="jscad" else "#8B949E")
+                    list_nexus_db.controls.append(
+                        ft.Container(content=ft.Row([
+                            ft.Text(icon, size=24),
+                            ft.Text(f[:20]+"..." if len(f)>20 else f, color=color, weight="bold", expand=True),
+                            ft.IconButton(ft.icons.PLAY_CIRCLE_FILL, icon_color="#00E676", on_click=lambda e, fp=p: load_file_to_cad(fp), tooltip="Cargar a NEXUS"),
+                            ft.IconButton(ft.icons.DOWNLOAD, icon_color="#00E5FF", on_click=lambda e, fn=f: exportar_archivo(fn), tooltip="Bajar a Android"),
+                            ft.IconButton(ft.icons.DELETE, icon_color="#B71C1C", on_click=lambda e, fp=p: delete_file(fp), tooltip="Borrar")
+                        ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#30363D"))
+                    )
+            except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
+            try: list_nexus_db.update()
+            except: pass
 
         view_archivos = ft.Column([
-            ft.ElevatedButton("🚀 INYECCIÓN WEB (SI ANDROID BLOQUEA ARCHIVOS)", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf'), height=60, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))),
-            ft.Row([
-                ft.ElevatedButton("🏠 Android", on_click=lambda _: nav_to("/storage/emulated/0"), bgcolor="#21262D", color="white"),
-                ft.ElevatedButton("📥 Descargas", on_click=lambda _: nav_to("/storage/emulated/0/Download"), bgcolor="#21262D", color="white"),
-                ft.ElevatedButton("📁 Nexus DB", on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20", color="white")
-            ], scroll="auto"),
-            ft.Row([tf_path, ft.ElevatedButton("Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
-            ft.Container(content=list_android, expand=True, bgcolor="#161B22", border_radius=8, padding=5)
+            ft.Container(content=ft.Column([
+                ft.ElevatedButton("🚀 1. INYECTAR ARCHIVO DESDE ANDROID", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf'), height=60, style=ft.ButtonStyle(shape=ft.RoundedRectangleBorder(radius=8))),
+                ft.Text("Abre Chrome, sube tu .STL o .JSCAD y salta las restricciones.", size=11, color="#8B949E")
+            ]), padding=10, bgcolor="#161B22", border_radius=8),
+            
+            ft.Row([ft.Text("📁 NEXUS INTERNAL DB", color="#E6EDF3", weight="bold"), ft.ElevatedButton("🔄 ACTUALIZAR DB", on_click=lambda _: refresh_nexus_db(), bgcolor="#21262D", color="white")], alignment="spaceBetween"),
+            ft.Divider(color="#30363D"),
+            ft.Container(content=list_nexus_db, expand=True)
         ], expand=True)
 
         main_container = ft.Container(content=view_constructor, expand=True)
@@ -537,20 +514,19 @@ def main(page: ft.Page):
         def set_tab(idx):
             if idx == 1:
                 global LATEST_CODE_B64; LATEST_CODE_B64 = base64.b64encode(prepare_js_payload().encode('utf-8')).decode()
-            if idx == 2: refresh_explorer(current_android_dir)
-            main_container.content = [view_constructor, view_visor, view_archivos, view_editor][idx]
+            if idx == 2: refresh_nexus_db()
+            main_container.content = [view_constructor, view_visor, view_archivos][idx]
             page.update()
 
         nav_bar = ft.Row([
-            ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0), color="black", bgcolor="#00E676"),
-            ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(1), color="black", bgcolor="#00E5FF"),
-            ft.ElevatedButton("📂 FILES", on_click=lambda _: set_tab(2), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("📝 RAW", on_click=lambda _: set_tab(3), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0), color="black", bgcolor="#00E676", expand=True),
+            ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(1), color="black", bgcolor="#00E5FF", expand=True),
+            ft.ElevatedButton("📂 FILES", on_click=lambda _: set_tab(2), bgcolor="#FFAB00", color="black", expand=True),
         ], scroll="auto")
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
         
-        on_cat_change(None); refresh_explorer(current_android_dir)
+        on_cat_change(None) # Init
 
     except Exception:
         page.clean(); page.add(ft.Container(ft.Text("CRASH FATAL:\n" + traceback.format_exc(), color="red"), padding=50)); page.update()
