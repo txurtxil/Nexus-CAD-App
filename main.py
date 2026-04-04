@@ -180,12 +180,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.16 TITAN"
+        page.title = "NEXUS CAD v20.17 TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.16 TITAN | UI Fixes Activos", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.17 TITAN | Bulletproof UI Activa", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -280,7 +280,12 @@ def main(page: ft.Page):
 
         help_box = ft.ExpansionTile(title=ft.Text("💡 Ayuda Rápida y Plantilla para IA", color="#00E5FF", weight="bold", size=12), collapsed_text_color="#00E5FF", text_color="#00E5FF", icon_color="#00E5FF", controls=[ft.Container(padding=10, bgcolor="#161B22", border_radius=8, content=ft.Column([ft.Text("📝 REGLAS DEL MOTOR:", weight="bold", color="#8B949E", size=11), ft.Text("1. Función principal 'function main(params) { ... }'.\n2. Devolver pieza usando 'return UTILS.mat(objeto);'.\n3. Usar transformaciones seguras: UTILS.rotZ(obj, deg) o UTILS.scale(obj, [1,1,1]).", size=11, color="#E6EDF3")]))])
 
-        row_snippets = ft.Row([ft.Text("Snippets:", color="#8B949E", size=12), ft.ElevatedButton("+ Cubo", on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[GW/2, GL/2, GH/2]});"), bgcolor="#21262D", color="white"), ft.ElevatedButton("+ Cilindro", on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:32});"), bgcolor="#21262D", color="white")], scroll="auto")
+        # FIX TOTAL DE LA UI: Usar content=ft.Text() en lugar de string literal text="xyz"
+        row_snippets = ft.Row([
+            ft.Text("Snippets:", color="#8B949E", size=12), 
+            ft.ElevatedButton(content=ft.Text("+ Cubo", color="white"), on_click=lambda _: inject_snippet("  var cubo = CSG.cube({center:[0,0,0], radius:[GW/2, GL/2, GH/2]});"), bgcolor="#21262D"), 
+            ft.ElevatedButton(content=ft.Text("+ Cilindro", color="white"), on_click=lambda _: inject_snippet("  var cil = CSG.cylinder({start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:32});"), bgcolor="#21262D")
+        ], scroll="auto")
 
         sw_ensamble = ft.Switch(label="Activar Ensamblador", value=False, active_color="#FFAB00")
         def toggle_ensamble(e):
@@ -320,8 +325,8 @@ def main(page: ft.Page):
             txt_code.value = final_code; txt_code.update(); page.update()
 
         panel_ensamble_ops = ft.Row([
-            ft.ElevatedButton("➕ UNIR", on_click=lambda _: add_to_stack("union"), bgcolor="#1B5E20", color="white", expand=True),
-            ft.ElevatedButton("➖ RESTAR", on_click=lambda _: add_to_stack("subtract"), bgcolor="#B71C1C", color="white", expand=True)
+            ft.ElevatedButton(content=ft.Text("➕ UNIR", color="white"), on_click=lambda _: add_to_stack("union"), bgcolor="#1B5E20", expand=True),
+            ft.ElevatedButton(content=ft.Text("➖ RESTAR", color="white"), on_click=lambda _: add_to_stack("subtract"), bgcolor="#B71C1C", expand=True)
         ], visible=False)
 
         panel_globales = ft.Container(content=ft.Column([
@@ -345,7 +350,7 @@ def main(page: ft.Page):
 
         lbl_stl_status = ft.Text("Ningún STL cargado aún en memoria.", color="#8B949E", size=11)
         sl_stl_sc, r_stl_sc = create_slider("Escala (%)", 1, 500, 100, True); sl_stl_x, r_stl_x = create_slider("Mover X", -150, 150, 0, False); sl_stl_y, r_stl_y = create_slider("Mover Y", -150, 150, 0, False); sl_stl_z, r_stl_z = create_slider("Mover Z", -150, 150, 0, False)
-        panel_stl_transform = ft.Container(content=ft.Column([ft.Row([ft.Text("🔄 TRANSFORMACIÓN BASE STL", color="#00E676", weight="bold"), lbl_stl_status]), ft.ElevatedButton("📂 IR A FILES PARA CARGAR UN STL", on_click=lambda _: set_tab(3), bgcolor="#00E5FF", color="black", width=float('inf')), inst("El Motor Híbrido soldará automáticamente piezas multi-body."), r_stl_sc, r_stl_x, r_stl_y, r_stl_z]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"), visible=False)
+        panel_stl_transform = ft.Container(content=ft.Column([ft.Row([ft.Text("🔄 TRANSFORMACIÓN BASE STL", color="#00E676", weight="bold"), lbl_stl_status]), ft.ElevatedButton(content=ft.Text("📂 IR A FILES PARA CARGAR UN STL", color="black"), on_click=lambda _: set_tab(3), bgcolor="#00E5FF", width=float('inf')), inst("El Motor Híbrido soldará automáticamente piezas multi-body."), r_stl_sc, r_stl_x, r_stl_y, r_stl_z]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"), visible=False)
 
         col_stl = ft.Column([ft.Text("Visor STL Original", color="#00E676", weight="bold")], visible=False)
         sl_stlf_z, r_stlf_z = create_slider("Corte Z (mm)", 0, 50, 1, False); col_stl_flatten = ft.Column([ft.Text("Aplanar Base (Flatten)", color="#00E676", weight="bold"), r_stlf_z], visible=False)
@@ -971,11 +976,11 @@ def main(page: ft.Page):
             col_texto, col_cubo, col_cilindro, col_laser, col_array_lin, col_array_pol, col_loft, col_panal, col_voronoi, col_evolvente, col_cremallera, col_conico, col_multicaja, col_perfil, col_revolucion, col_escuadra, col_engranaje, col_pcb, col_vslot, col_bisagra, col_abrazadera, col_fijacion, col_rodamiento, col_planetario, col_polea, col_helice, col_rotula, col_carcasa, col_muelle, col_acme, col_codo, col_naca, col_stand_movil, col_clip_cable, col_vr_pedestal,
             
             ft.Container(height=10),
-            ft.ElevatedButton("▶ ENVIAR AL WORKER (RENDER 3D)", on_click=lambda _: run_render(), color="black", bgcolor="#00E676", height=60, width=float('inf'))
+            ft.ElevatedButton(content=ft.Text("▶ ENVIAR AL WORKER (RENDER 3D)", color="black"), on_click=lambda _: run_render(), bgcolor="#00E676", height=60, width=float('inf'))
         ], expand=True, scroll="auto")
 
         view_editor = ft.Column([
-            ft.Row([ft.ElevatedButton("💾 GUARDAR", on_click=lambda _: save_project_to_nexus(), color="white", bgcolor="#0D47A1"), ft.ElevatedButton("🗑️ RESET TOTAL", on_click=lambda _: clear_editor(), color="white", bgcolor="#B71C1C")], scroll="auto"),
+            ft.Row([ft.ElevatedButton(content=ft.Text("💾 GUARDAR", color="white"), on_click=lambda _: save_project_to_nexus(), bgcolor="#0D47A1"), ft.ElevatedButton(content=ft.Text("🗑️ RESET TOTAL", color="white"), on_click=lambda _: clear_editor(), bgcolor="#B71C1C")], scroll="auto"),
             help_box, row_snippets, txt_code
         ], expand=True)
 
@@ -1026,7 +1031,7 @@ def main(page: ft.Page):
         view_visor = ft.Column([
             ft.Container(height=5), hw_panel, ft.Container(height=5), panel_vr, ft.Container(height=5),
             ft.Text("Motor Web Worker / Multi-Hilo", text_align="center", color="#00E5FF", weight="bold"),
-            ft.Row([ft.ElevatedButton("🔄 ABRIR VISOR 3D (LOCAL)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", color="black", bgcolor="#00E676", height=60, expand=True)], alignment=ft.MainAxisAlignment.CENTER)
+            ft.Row([ft.ElevatedButton(content=ft.Text("🔄 ABRIR VISOR 3D (LOCAL)", color="black"), url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", bgcolor="#00E676", height=60, expand=True)], alignment=ft.MainAxisAlignment.CENTER)
         ], expand=True, scroll="auto")
         
         # =========================================================
@@ -1045,9 +1050,9 @@ def main(page: ft.Page):
                         ft.Container(content=ft.Row([
                             ft.Text("🧊" if ext=="stl" else "🧩", size=20),
                             ft.Text(f, color="white", weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                            ft.TextButton("▶️", on_click=lambda e, fp=p: load_file(fp), tooltip="Cargar"),
-                            ft.TextButton("⬇️", on_click=lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), tooltip="Bajar"),
-                            ft.TextButton("🗑️", on_click=lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], tooltip="Borrar")
+                            ft.TextButton(content=ft.Text("▶️"), on_click=lambda e, fp=p: load_file(fp), tooltip="Cargar"),
+                            ft.TextButton(content=ft.Text("⬇️"), on_click=lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), tooltip="Bajar"),
+                            ft.TextButton(content=ft.Text("🗑️"), on_click=lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], tooltip="Borrar")
                         ]), bgcolor="#21262D", padding=5, border_radius=5)
                     )
             except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
@@ -1118,16 +1123,16 @@ def main(page: ft.Page):
             status.value = f"✓ Guardado en DB Interna: {fname}"; page.update()
 
         row_quick_paths = ft.Row([
-            ft.ElevatedButton("🏠 Android", on_click=lambda _: nav_to("/storage/emulated/0"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("📥 Descargas", on_click=lambda _: nav_to("/storage/emulated/0/Download"), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("📁 Nexus DB", on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20", color="white")
+            ft.ElevatedButton(content=ft.Text("🏠 Android", color="white"), on_click=lambda _: nav_to("/storage/emulated/0"), bgcolor="#21262D"),
+            ft.ElevatedButton(content=ft.Text("📥 Descargas", color="white"), on_click=lambda _: nav_to("/storage/emulated/0/Download"), bgcolor="#21262D"),
+            ft.ElevatedButton(content=ft.Text("📁 Nexus DB", color="white"), on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20")
         ], scroll="auto")
 
         view_archivos = ft.Column([
             ft.Container(content=ft.Column([
                 ft.Text("🌐 INYECCIÓN WEB & NEXUS DB", color="#00E676", weight="bold"),
-                ft.ElevatedButton("🚀 INYECTAR ARCHIVO (VÍA NAVEGADOR PC)", url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", color="black", width=float('inf')),
-                ft.Row([ft.Text("Archivos listos en memoria:", color="#E6EDF3", size=11), ft.ElevatedButton("🔄", on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", color="#00E5FF", width=50)], alignment="spaceBetween"),
+                ft.ElevatedButton(content=ft.Text("🚀 INYECTAR ARCHIVO (VÍA NAVEGADOR PC)", color="black"), url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", width=float('inf')),
+                ft.Row([ft.Text("Archivos listos en memoria:", color="#E6EDF3", size=11), ft.ElevatedButton(content=ft.Text("🔄", color="#00E5FF"), on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", width=50)], alignment="spaceBetween"),
                 ft.Container(content=list_nexus_db, height=130, bgcolor="#0B0E14", border_radius=5, padding=5)
             ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676")),
             ft.Container(height=5),
@@ -1135,8 +1140,8 @@ def main(page: ft.Page):
                 ft.Text("📱 EXPLORADOR NATIVO ANDROID", color="#00E5FF", weight="bold"),
                 ft.Text("Toca un .stl (Carga al Forge) o .jscad (Editar):", size=10, color="#8B949E"),
                 row_quick_paths,
-                ft.Row([tf_path, ft.ElevatedButton("Ir", on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00", color="black")]),
-                ft.ElevatedButton("💾 GUARDAR CÓDIGO AQUÍ", on_click=save_to_android, bgcolor="#0D47A1", color="white", width=float('inf')),
+                ft.Row([tf_path, ft.ElevatedButton(content=ft.Text("Ir", color="black"), on_click=lambda _: nav_to(tf_path.value), bgcolor="#FFAB00")]),
+                ft.ElevatedButton(content=ft.Text("💾 GUARDAR CÓDIGO AQUÍ", color="white"), on_click=save_to_android, bgcolor="#0D47A1", width=float('inf')),
                 ft.Container(content=list_android, expand=True, bgcolor="#0B0E14", border_radius=5, padding=5)
             ], expand=True), bgcolor="#161B22", padding=10, border_radius=8, expand=True)
         ], expand=True)
@@ -1154,10 +1159,10 @@ def main(page: ft.Page):
             page.update()
 
         nav_bar = ft.Row([
-            ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0), bgcolor="#21262D", color="white"),
-            ft.ElevatedButton("🌐 PARAM", on_click=lambda _: set_tab(1), color="black", bgcolor="#FFAB00"),
-            ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(2), color="black", bgcolor="#00E5FF"),
-            ft.ElevatedButton("📂 FILES", on_click=lambda _: set_tab(3), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton(content=ft.Text("💻 CODE", color="white"), on_click=lambda _: set_tab(0), bgcolor="#21262D"),
+            ft.ElevatedButton(content=ft.Text("🌐 PARAM", color="black"), on_click=lambda _: set_tab(1), bgcolor="#FFAB00"),
+            ft.ElevatedButton(content=ft.Text("👁️ 3D", color="black"), on_click=lambda _: set_tab(2), bgcolor="#00E5FF"),
+            ft.ElevatedButton(content=ft.Text("📂 FILES", color="white"), on_click=lambda _: set_tab(3), bgcolor="#21262D"),
         ], scroll="auto")
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
