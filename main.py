@@ -104,8 +104,14 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     data = json.loads(post_data.decode('utf-8'))
                     filepath = os.path.join(EXPORT_DIR, data['filename'])
                     with open(filepath, 'w') as f: f.write(data['data'])
-                    self.send_response(200); self.send_header("Content-type", "application/json"); self._send_cors(); self.end_headers()
-                    self.wfile.write(b'{"status": "ok"}')
+                    
+                    resp = b'{"status": "ok"}'
+                    self.send_response(200)
+                    self.send_header("Content-type", "application/json")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self._send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
                     return
                 except Exception: pass
             self.send_response(500); self._send_cors(); self.end_headers()
@@ -115,18 +121,22 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             fn = unquote(self.headers.get('File-Name', 'uploaded_file.stl'))
             if cl > 0:
                 try:
-                    # Guardado por chunks (trozos) para evitar cuelgues con STLs muy pesados
+                    # Guardado robusto de lectura directa para evitar corrupciones
+                    file_data = self.rfile.read(cl)
                     filepath = os.path.join(EXPORT_DIR, fn)
                     with open(filepath, 'wb') as f:
-                        bytes_read = 0
-                        chunk_size = 8192
-                        while bytes_read < cl:
-                            chunk = self.rfile.read(min(chunk_size, cl - bytes_read))
-                            if not chunk: break
-                            f.write(chunk)
-                            bytes_read += len(chunk)
-                    self.send_response(200); self._send_cors(); self.end_headers(); self.wfile.write(b'ok'); return
-                except Exception as e: print(f"Error: {e}")
+                        f.write(file_data)
+                    
+                    # FIX CRÍTICO: Enviar el Content-Length para que el XHR termine instantáneamente
+                    resp = b'ok'
+                    self.send_response(200)
+                    self.send_header("Content-type", "text/plain")
+                    self.send_header("Content-Length", str(len(resp)))
+                    self._send_cors()
+                    self.end_headers()
+                    self.wfile.write(resp)
+                    return
+                except Exception as e: print(f"Error Upload: {e}")
             self.send_response(500); self._send_cors(); self.end_headers()
 
     def do_GET(self):
@@ -147,7 +157,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             else: self.send_response(404); self._send_cors(); self.end_headers()
 
         elif parsed.path == '/upload_ui':
-            # Interfaz WEB mejorada con Barra de Progreso Real (XHR en lugar de fetch)
             html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="UTF-8"></head>
             <body style="background:#0B0E14; color:#E6EDF3; font-family:sans-serif; text-align:center; padding:20px;">
                 <h2 style="color:#00E676;">🚀 INYECCIÓN WEB NEXUS</h2>
@@ -175,6 +184,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     var xhr = new XMLHttpRequest();
                     xhr.open('POST', '/api/upload', true);
                     xhr.setRequestHeader('File-Name', encodeURIComponent(f.name));
+                    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
                     
                     xhr.upload.onprogress = function(e) {
                         if (e.lengthComputable) {
@@ -203,7 +213,12 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 }
                 </script>
             </body></html>"""
-            self.send_response(200); self.send_header("Content-type", "text/html"); self._send_cors(); self.end_headers(); self.wfile.write(html.encode('utf-8'))
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.send_header("Content-Length", str(len(html.encode('utf-8'))))
+            self._send_cors()
+            self.end_headers()
+            self.wfile.write(html.encode('utf-8'))
             
         elif parsed.path.startswith('/descargar/'):
             filename = unquote(parsed.path.replace('/descargar/', ''))
@@ -237,12 +252,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.10 TITAN"
+        page.title = "NEXUS CAD v20.11 TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.10 TITAN | Fusión de Exploradores Activa", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.11 TITAN | Motor Híbrido Protegido Activo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -254,7 +269,7 @@ def main(page: ft.Page):
         def clear_editor():
             nonlocal ensamble_stack
             ensamble_stack = []
-            txt_code.value = "function main() {\n  // Plantilla limpia\n  return CSG.cube({radius:[0,0,0]});\n}"
+            txt_code.value = "function main() {\n  // Plantilla limpia\n  return CSG.cube({radius:[0.01,0.01,0.01]});\n}"
             status.value = "✓ Código borrado por completo."
             status.color = "#B71C1C"
             txt_code.update(); page.update()
@@ -525,7 +540,7 @@ def main(page: ft.Page):
         col_vr_pedestal = ft.Column([ft.Text("Pedestal de Exhibición (Modo VR)", color="#B388FF"), inst("Usa esto como base en el Ensamblador antes de colocar tu modelo encima para verlo en Realidad Virtual."), ft.Container(content=ft.Column([r_vr_s]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
 
-        # === GENERADOR DE CÓDIGO JS CON HÍBRIDO MÚLTIPLE INYECTADO ===
+        # === GENERADOR DE CÓDIGO JS CON HÍBRIDO MÚLTIPLE INYECTADO (FIX CSG WRAPPER) ===
         def get_stl_base_js():
             sc = sl_stl_sc.value / 100.0; tx = sl_stl_x.value; ty = sl_stl_y.value; tz = sl_stl_z.value
             return f"""  var sc = {sc}; var tx = {tx}; var ty = {ty}; var tz = {tz};
@@ -536,8 +551,16 @@ def main(page: ft.Page):
           for(var i = 1; i < IMPORTED_STL.length; i++) {{ dron = dron.union(IMPORTED_STL[i]); }}
       }} else {{ dron = IMPORTED_STL; }}
   }}
-  if(!dron || !dron.polygons) {{ return CSG.cube({{radius:[0.1,0.1,0.1]}}); }}
-  dron = dron.scale([sc, sc, sc]).translate([tx, ty, tz]);
+  
+  // WRAPPER DE DEFENSA: Si el STL pierde su "Clase CSG" al pasar por la memoria del Worker, lo reconstruimos
+  if (dron && dron.polygons && typeof dron.scale !== 'function') {{
+      try {{ dron = CSG.fromPolygons(dron.polygons); }} catch(e) {{ }}
+  }}
+  
+  if(!dron || !dron.polygons || dron.polygons.length === 0) {{ return CSG.cube({{radius:[0.01, 0.01, 0.01]}}); }}
+  
+  // BLOQUE SEGURO DE TRANSFORMACIÓN
+  try {{ dron = dron.scale([sc, sc, sc]).translate([tx, ty, tz]); }} catch(e) {{ }}
 """
 
         def generate_param_code():
@@ -1150,7 +1173,6 @@ def main(page: ft.Page):
         # =========================================================
         # PESTAÑA FILES: FUSIÓN DE INYECCIÓN WEB Y EXPLORADOR NATIVO
         # =========================================================
-        # 1. BLOQUE DE INYECCIÓN WEB (NEXUS DB)
         list_nexus_db = ft.ListView(height=130, spacing=5)
 
         def refresh_nexus_db():
@@ -1188,7 +1210,6 @@ def main(page: ft.Page):
                 set_tab(0); status.value = "✓ Código Cargado"
             page.update()
 
-        # 2. BLOQUE DEL EXPLORADOR NATIVO ANDROID
         current_android_dir = ANDROID_ROOT
         tf_path = ft.TextField(value=current_android_dir, expand=True, bgcolor="#161B22", height=40, text_size=12)
         list_android = ft.ListView(expand=True, spacing=5)
@@ -1255,7 +1276,6 @@ def main(page: ft.Page):
             ft.ElevatedButton("📁 Nexus DB", on_click=lambda _: nav_to(EXPORT_DIR), bgcolor="#1B5E20", color="white")
         ], scroll="auto")
 
-        # FUSIÓN DEFINITIVA DE FILES
         view_archivos = ft.Column([
             ft.Container(content=ft.Column([
                 ft.Text("🌐 INYECCIÓN WEB & NEXUS DB", color="#00E676", weight="bold"),
