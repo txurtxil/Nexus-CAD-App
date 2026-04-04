@@ -78,11 +78,19 @@ except:
     LOCAL_PORT = 8556
 
 LAN_IP = get_lan_ip()
+
+# VARIABLES GLOBALES PARA CONTROL INTELIGENTE DE STL
 LATEST_CODE_B64 = ""
+LATEST_NEEDS_STL = False
 
 def get_stl_hash():
     path = os.path.join(EXPORT_DIR, "imported.stl")
-    if os.path.exists(path): return str(os.path.getmtime(path))
+    if os.path.exists(path):
+        try:
+            sz = os.path.getsize(path)
+            # Seguridad: Un STL binario válido siempre pesa más de 84 bytes.
+            if sz > 84: return f"{os.path.getmtime(path)}_{sz}"
+        except: pass
     return ""
 
 class NexusHandler(http.server.BaseHTTPRequestHandler):
@@ -121,13 +129,10 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             fn = unquote(self.headers.get('File-Name', 'uploaded_file.stl'))
             if cl > 0:
                 try:
-                    # Guardado robusto de lectura directa para evitar corrupciones
                     file_data = self.rfile.read(cl)
                     filepath = os.path.join(EXPORT_DIR, fn)
-                    with open(filepath, 'wb') as f:
-                        f.write(file_data)
+                    with open(filepath, 'wb') as f: f.write(file_data)
                     
-                    # FIX CRÍTICO: Enviar el Content-Length para que el XHR termine instantáneamente
                     resp = b'ok'
                     self.send_response(200)
                     self.send_header("Content-type", "text/plain")
@@ -140,12 +145,14 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(500); self._send_cors(); self.end_headers()
 
     def do_GET(self):
-        global LATEST_CODE_B64
+        global LATEST_CODE_B64, LATEST_NEEDS_STL
         parsed = urlparse(self.path)
         
         if parsed.path == '/api/get_code_b64.json':
             self.send_response(200); self.send_header("Content-type", "application/json"); self._send_cors(); self.end_headers()
-            payload = json.dumps({"code_b64": LATEST_CODE_B64, "stl_hash": get_stl_hash()})
+            # CLAVE: Solo enviamos el hash del STL si la herramienta seleccionada lo requiere.
+            hash_val = get_stl_hash() if LATEST_NEEDS_STL else ""
+            payload = json.dumps({"code_b64": LATEST_CODE_B64, "stl_hash": hash_val})
             self.wfile.write(payload.encode())
             LATEST_CODE_B64 = "" 
 
@@ -163,11 +170,9 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 <div style="background:#161B22; padding:20px; border-radius:8px; border:1px solid #30363D; display:inline-block; width:90%; max-width:400px;">
                     <input type="file" id="f" style="margin-bottom:20px; color:white; width:100%;">
                     <button onclick="up()" style="background:#00E5FF; color:black; padding:15px; width:100%; font-weight:bold; border:none; border-radius:8px; cursor:pointer;">INYECTAR ARCHIVO</button>
-                    
                     <div id="pb-container" style="display:none; width:100%; background:#30363D; border-radius:4px; margin-top:20px; height:12px; overflow:hidden;">
                         <div id="pb-fill" style="width:0%; background:#00E5FF; height:100%; transition:width 0.2s;"></div>
                     </div>
-                    
                     <p id="s" style="margin-top:15px; font-weight:bold; font-size:15px;"></p>
                 </div>
                 <script>
@@ -199,37 +204,19 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                             s.style.color = '#00E676'; s.innerText = '✓ ¡ÉXITO! Vuelve a la App y pulsa REFRESCAR.';
                             pbf.style.width = '100%'; pbf.style.background = '#00E676';
                         } else {
-                            s.style.color = '#FF5252'; s.innerText = '❌ Error del servidor: ' + xhr.status;
+                            s.style.color = '#FF5252'; s.innerText = '❌ Error: ' + xhr.status;
                             pbf.style.background = '#FF5252';
                         }
                     };
-                    
-                    xhr.onerror = function() {
-                        s.style.color = '#FF5252'; s.innerText = '❌ Error de red o conexión perdida';
-                        pbf.style.background = '#FF5252';
-                    };
-                    
+                    xhr.onerror = function() { s.style.color = '#FF5252'; s.innerText = '❌ Error de red'; pbf.style.background = '#FF5252'; };
                     xhr.send(f);
                 }
                 </script>
             </body></html>"""
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.send_header("Content-Length", str(len(html.encode('utf-8'))))
-            self._send_cors()
-            self.end_headers()
-            self.wfile.write(html.encode('utf-8'))
+            self.send_response(200); self.send_header("Content-type", "text/html"); self.send_header("Content-Length", str(len(html.encode('utf-8')))); self._send_cors(); self.end_headers(); self.wfile.write(html.encode('utf-8'))
             
         elif parsed.path.startswith('/descargar/'):
             filename = unquote(parsed.path.replace('/descargar/', ''))
-            filepath = os.path.join(EXPORT_DIR, filename)
-            if os.path.exists(filepath):
-                with open(filepath, "rb") as f:
-                    self.send_response(200); self.send_header("Content-Disposition", f'attachment; filename="{filename}"'); self._send_cors(); self.end_headers(); self.wfile.write(f.read())
-            else: self.send_response(404); self._send_cors(); self.end_headers()
-            
-        elif parsed.path.startswith('/exports/'):
-            filename = unquote(parsed.path.replace('/exports/', ''))
             filepath = os.path.join(EXPORT_DIR, filename)
             if os.path.exists(filepath):
                 with open(filepath, "rb") as f:
@@ -252,12 +239,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.11 TITAN"
+        page.title = "NEXUS CAD v20.12 TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.11 TITAN | Motor Híbrido Protegido Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.12 TITAN | Carga Inteligente STL", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -309,8 +296,13 @@ def main(page: ft.Page):
             return c
 
         def run_render():
-            global LATEST_CODE_B64
-            LATEST_CODE_B64 = base64.b64encode(prepare_js_payload().encode('utf-8')).decode()
+            global LATEST_CODE_B64, LATEST_NEEDS_STL
+            js_payload = prepare_js_payload()
+            LATEST_CODE_B64 = base64.b64encode(js_payload.encode('utf-8')).decode()
+            
+            # DETECCIÓN INTELIGENTE: Si la herramienta no es STL y el código no lo llama, bloqueamos su carga para evitar crasheos (RangeError DataView)
+            LATEST_NEEDS_STL = ("IMPORTED_STL" in js_payload) or herramienta_actual.startswith("stl")
+            
             set_tab(2); page.update()
 
         help_box = ft.ExpansionTile(title=ft.Text("💡 Ayuda Rápida y Plantilla para IA", color="#00E5FF", weight="bold", size=12), collapsed_text_color="#00E5FF", text_color="#00E5FF", icon_color="#00E5FF", controls=[ft.Container(padding=10, bgcolor="#161B22", border_radius=8, content=ft.Column([ft.Text("📝 REGLAS DEL MOTOR:", weight="bold", color="#8B949E", size=11), ft.Text("1. Tu función principal siempre debe ser 'function main() { ... }'.\n2. Para devolver la pieza final, usa 'return objeto;'.\n3. Operaciones booleanas: pieza.union(b), pieza.subtract(b), pieza.intersect(b).\n4. Globals automáticos: GW (ancho), GL (largo), GH (alto), GT (grosor), G_TOL (tolerancia).", size=11, color="#E6EDF3")]))])
@@ -552,14 +544,11 @@ def main(page: ft.Page):
       }} else {{ dron = IMPORTED_STL; }}
   }}
   
-  // WRAPPER DE DEFENSA: Si el STL pierde su "Clase CSG" al pasar por la memoria del Worker, lo reconstruimos
   if (dron && dron.polygons && typeof dron.scale !== 'function') {{
       try {{ dron = CSG.fromPolygons(dron.polygons); }} catch(e) {{ }}
   }}
   
   if(!dron || !dron.polygons || dron.polygons.length === 0) {{ return CSG.cube({{radius:[0.01, 0.01, 0.01]}}); }}
-  
-  // BLOQUE SEGURO DE TRANSFORMACIÓN
   try {{ dron = dron.scale([sc, sc, sc]).translate([tx, ty, tz]); }} catch(e) {{ }}
 """
 
@@ -1199,6 +1188,14 @@ def main(page: ft.Page):
         def load_file(filepath):
             fn = os.path.basename(filepath); ext = fn.lower().split('.')[-1]
             if ext == "stl":
+                try:
+                    # Filtro anti-crasheos: un STL de menos de 84 bytes es matemáticamente imposible que sea válido.
+                    if os.path.getsize(filepath) < 84:
+                        status.value = f"❌ Error: El archivo {fn} está corrupto o vacío."; status.color = "#FF5252"
+                        page.update()
+                        return
+                except: pass
+                
                 shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
                 lbl_stl_status.value = f"✓ Activo: {fn}"; lbl_stl_status.color = "#00E676"
                 select_tool("stl")
@@ -1300,8 +1297,10 @@ def main(page: ft.Page):
 
         def set_tab(idx):
             if idx == 2:
-                global LATEST_CODE_B64
-                LATEST_CODE_B64 = base64.b64encode(prepare_js_payload().encode('utf-8')).decode()
+                global LATEST_CODE_B64, LATEST_NEEDS_STL
+                js_payload = prepare_js_payload()
+                LATEST_CODE_B64 = base64.b64encode(js_payload.encode('utf-8')).decode()
+                LATEST_NEEDS_STL = ("IMPORTED_STL" in js_payload) or herramienta_actual.startswith("stl")
             if idx == 3:
                 refresh_nexus_db()
                 refresh_explorer(current_android_dir)
