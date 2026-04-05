@@ -335,7 +335,32 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        if parsed.path == '/api/save_image':
+        if parsed.path == '/api/save_model':
+            # INTERCEPTOR NATIVO DE EXPORTACIÓN (Recibe archivos STL/OBJ desde el visor)
+            cl = int(self.headers.get('Content-Length', 0))
+            if cl > 0:
+                try:
+                    data = json.loads(self.rfile.read(cl).decode('utf-8'))
+                    filename = data.get('filename', f'nexus_export_{int(time.time())}.stl')
+                    b64_data = data.get('data', '').split(',')[1]
+                    file_bytes = base64.b64decode(b64_data)
+                    
+                    # Guardar directo en Descargas de Android
+                    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+                    with open(os.path.join(DOWNLOAD_DIR, filename), 'wb') as f:
+                        f.write(file_bytes)
+                        
+                    # Guardar copia de seguridad en Nexus DB
+                    with open(os.path.join(EXPORT_DIR, filename), 'wb') as f:
+                        f.write(file_bytes)
+                        
+                    self.send_response(200); self._send_cors(); self.end_headers(); self.wfile.write(b'ok')
+                    return
+                except Exception as e:
+                    pass
+            self.send_response(500); self._send_cors(); self.end_headers()
+            
+        elif parsed.path == '/api/save_image':
             cl = int(self.headers.get('Content-Length', 0))
             if cl > 0:
                 try:
@@ -410,7 +435,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 fn = "openscad_engine.html"
                 with open(os.path.join(ASSETS_DIR, fn), "r", encoding="utf-8") as f: content = f.read()
                 
-                # INYECTOR SEGURO: Evitamos volcar 8MB en Base64 en el HTML. Usamos fetch directo para evitar cuelgues del Worker (ProgressEvent fix).
+                # INYECTOR SEGURO PARA EL MOTOR: Intercepta importaciones y bloquea la descarga por defecto en Android WebView enviándolo a Python nativo.
                 injector = '''<script>
                 var _origFetch = window.fetch;
                 window.fetch = function() {
@@ -424,6 +449,34 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     if(url && typeof url === "string" && url.includes("imported.stl")) { arguments[1] = "/imported.stl?t=" + Date.now(); }
                     return _origXHR.apply(this, arguments);
                 };
+                window.addEventListener('load', function() {
+                    var _origClick = window.HTMLAnchorElement.prototype.click;
+                    window.HTMLAnchorElement.prototype.click = function() {
+                        if(this.download && this.href) {
+                            var filename = this.download;
+                            var url = this.href;
+                            fetch(url).then(r => r.blob()).then(blob => {
+                                var reader = new FileReader();
+                                reader.onload = function() {
+                                    fetch('/api/save_model', {
+                                        method: 'POST',
+                                        headers: {'Content-Type': 'application/json'},
+                                        body: JSON.stringify({filename: filename, data: reader.result})
+                                    }).then(r => {
+                                        var t = document.createElement('div');
+                                        t.innerText = '✅ ' + filename + ' guardado en Descargas de Android';
+                                        t.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#00E676;color:black;padding:15px;border-radius:8px;font-weight:bold;z-index:999999;box-shadow:0 4px 10px rgba(0,0,0,0.5);font-family:sans-serif;';
+                                        document.body.appendChild(t);
+                                        setTimeout(function(){t.remove();}, 4000);
+                                    });
+                                };
+                                reader.readAsDataURL(blob);
+                            });
+                            return; // PREVIENE EL BLOQUEO DE ANDROID WEBVIEW
+                        }
+                        _origClick.apply(this, arguments);
+                    };
+                });
                 </script>'''
                 
                 if "<head>" in content: content = content.replace("<head>", "<head>" + injector)
@@ -453,12 +506,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.31 TITAN ULTIMATE"
+        page.title = "NEXUS CAD v20.40 NEXUS APEX"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.31 | Función 5 Habilitada (Exportar OBJ) + Estabilidad Fix", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.40 | Ensamble Blindado & Exportación Web Nativa", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -489,8 +542,6 @@ def main(page: ft.Page):
         def prepare_js_payload():
             c_val = {"PLA Gris Mate": "[0.5, 0.5, 0.5, 1.0]", "PETG Transparente": "[0.8, 0.9, 0.9, 0.45]", "Fibra de Carbono": "[0.15, 0.15, 0.15, 1.0]", "Aluminio Mecanizado": "[0.7, 0.75, 0.8, 1.0]", "Madera Bambú": "[0.6, 0.4, 0.2, 1.0]", "Oro Puro": "[0.9, 0.75, 0.1, 1.0]", "Neón Cyan": "[0.0, 1.0, 1.0, 0.8]"}.get(dd_mat.value, "[0.5, 0.5, 0.5, 1.0]")
             header = f"  var GW = {sl_g_w.value}; var GL = {sl_g_l.value}; var GH = {sl_g_h.value}; var GT = {sl_g_t.value}; var G_TOL = {sl_g_tol.value}; var KINE_T = {sl_kine.value}; var MAT_C = {c_val};\n"
-            
-            # CORRECCIÓN FATAL WORKER (Arrays handling para evitar el Cannot read properties of undefined):
             utils_block = """  if(typeof CSG !== 'undefined' && typeof CSG.Matrix4x4 === 'undefined' && typeof Matrix4x4 !== 'undefined') { CSG.Matrix4x4 = Matrix4x4; }
   var UTILS = { 
     trans: function(o, v) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.trans(x, v);}); if(typeof o.translate === 'function') return o.translate(v); if(typeof translate !== 'undefined') return translate(v, o); } catch(e) {} return o; },
@@ -1050,12 +1101,12 @@ def main(page: ft.Page):
             ft.Container(height=5), hw_panel, ft.Container(height=5),
             ft.Container(content=ft.Column([ft.Text("🥽 MODO GAFAS VR O PC EXTERNO", color="#B388FF", weight="bold", size=11), ft.TextField(value=f"http://{LAN_IP}:{LOCAL_PORT}/openscad_engine.html", read_only=True, text_size=16, text_align="center", bgcolor="#161B22", color="#00E676")]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#B388FF")),
             ft.Container(height=5),
-            ft.Text("Motor Web Worker (Geometría Base)", text_align="center", color="#00E5FF", weight="bold"),
+            ft.Text("Motor Web Worker (Exportación 100% Nativa Activada)", text_align="center", color="#00E5FF", weight="bold"),
             ft.ElevatedButton("🔄 ABRIR VISOR 3D (ESTÁNDAR)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/openscad_engine.html", bgcolor="#00E676", color="black", height=60, width=float('inf')),
         ], expand=True, scroll="auto")
         
         # =========================================================
-        # TAB 3: ENSAMBLADOR VISUAL PBR (SEGURO FLET FIX)
+        # TAB 3: ENSAMBLADOR VISUAL PBR (SEGURO FLET FIX - FINAL)
         # =========================================================
         def update_pbr_state():
             global PBR_STATE, ASSEMBLY_PARTS
@@ -1071,16 +1122,15 @@ def main(page: ft.Page):
                 col_assembly.controls.append(ft.Text("⚠️ DB de STLs vacía.\nVe a la pestaña FILES y sube o guarda STLs primero.", color="#FFAB00", weight="bold"))
                 page.update()
                 return
-                
-            opts = [ft.dropdown.Option(f) for f in files]
             
+            # EL GRAN FIX FLET: Generar listas Option *nuevas* y únicas para cada control
             for i, part in enumerate(ASSEMBLY_PARTS):
                 if part["file"] not in files: part["file"] = files[0]
                 
-                df = ft.Dropdown(options=opts, value=part["file"], width=160, text_size=12, bgcolor="#0B0E14", color="#00E5FF")
-                dm = ft.Dropdown(options=[ft.dropdown.Option("pla"), ft.dropdown.Option("petg"), ft.dropdown.Option("carbon"), ft.dropdown.Option("aluminum"), ft.dropdown.Option("wood"), ft.dropdown.Option("gold")], value=part.get("mat", "pla"), width=100, text_size=12, bgcolor="#0B0E14")
+                # Instancias de Option totalmente nuevas por cada Dropdown
+                opts_file = [ft.dropdown.Option(f) for f in files]
+                opts_mat = [ft.dropdown.Option("pla"), ft.dropdown.Option("petg"), ft.dropdown.Option("carbon"), ft.dropdown.Option("aluminum"), ft.dropdown.Option("wood"), ft.dropdown.Option("gold")]
                 
-                # Closures puras para no atrapar variables del bucle y evitar cuelgues de Flet
                 def create_change_handler(p, key):
                     def handler(e): p[key] = e.control.value; update_pbr_state()
                     return handler
@@ -1089,6 +1139,9 @@ def main(page: ft.Page):
                     def handler(e): ASSEMBLY_PARTS.remove(p); render_assembly_ui(); update_pbr_state()
                     return handler
                     
+                df = ft.Dropdown(options=opts_file, value=part["file"], width=160, text_size=12, bgcolor="#0B0E14", color="#00E5FF")
+                dm = ft.Dropdown(options=opts_mat, value=part.get("mat", "pla"), width=100, text_size=12, bgcolor="#0B0E14")
+                
                 df.on_change = create_change_handler(part, "file")
                 dm.on_change = create_change_handler(part, "mat")
                 
