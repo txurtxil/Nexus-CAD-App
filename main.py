@@ -66,9 +66,6 @@ def get_lan_ip():
         return ip
     except: return "127.0.0.1"
 
-# =========================================================
-# SERVIDOR LOCAL WEBGL
-# =========================================================
 try:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('0.0.0.0', 0))
@@ -77,7 +74,6 @@ except:
     LOCAL_PORT = 8556
 
 LAN_IP = get_lan_ip()
-
 LATEST_CODE_B64 = ""
 LATEST_NEEDS_STL = False
 
@@ -89,6 +85,143 @@ def get_stl_hash():
             if sz > 84: return f"{os.path.getmtime(path)}_{sz}"
         except: pass
     return ""
+
+PBR_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXUS PBR STUDIO</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+    <style>body{margin:0;overflow:hidden;background:#0B0E14;font-family:sans-serif;} canvas{display:block;}</style>
+</head>
+<body>
+    <div style="position:absolute;top:10px;left:10px;background:rgba(22,27,34,0.85);padding:15px;border-radius:10px;border:1px solid #C51162;box-shadow: 0 4px 6px rgba(0,0,0,0.3); backdrop-filter: blur(5px);">
+        <h3 style="margin:0 0 10px 0;color:#FF007F;font-size:16px;">🎨 NEXUS PBR STUDIO</h3>
+        <select id="matSelect" style="width:100%;background:#0B0E14;color:#00E5FF;padding:8px;border:1px solid #30363D;border-radius:5px;outline:none;font-weight:bold;margin-bottom:10px;">
+            <option value="carbon">Fibra de Carbono Brillo</option>
+            <option value="wood">Madera de Bambú</option>
+            <option value="petg">PETG Transparente</option>
+            <option value="aluminum">Aluminio Cepillado</option>
+            <option value="gold">Oro Puro</option>
+            <option value="pla">PLA Gris Mate</option>
+        </select>
+        <button onclick="loadSTL()" style="width:100%;background:#00E676;color:#000;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">↻ RECARGAR PIEZA</button>
+        <p style="color:#8B949E;font-size:10px;margin:10px 0 0 0;max-width:180px;">Carga un STL desde la pestaña FILES en la app para verlo aquí.</p>
+    </div>
+    <script>
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0B0E14);
+        scene.fog = new THREE.Fog(0x0B0E14, 50, 500);
+
+        const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
+        scene.add(hemiLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        dirLight.position.set(50, 100, 50);
+        scene.add(dirLight);
+        const backLight = new THREE.DirectionalLight(0x00E5FF, 1.0);
+        backLight.position.set(-50, 50, -50);
+        scene.add(backLight);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
+        camera.position.set(150, 150, 150);
+
+        const renderer = new THREE.WebGLRenderer({antialias: true});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.outputEncoding = THREE.sRGBEncoding;
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- SHADERS PROCEDURALES CANVAS ---
+        function createCarbonFiber() {
+            const c = document.createElement('canvas'); c.width=64; c.height=64;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#111'; ctx.fillRect(0,0,64,64);
+            ctx.fillStyle = '#2a2a2a'; ctx.fillRect(0,0,32,32); ctx.fillRect(32,32,32,32);
+            ctx.fillStyle = '#444';
+            for(let i=0; i<32; i+=4) { ctx.fillRect(i,0,2,32); ctx.fillRect(32+i,32,2,32); }
+            ctx.fillStyle = '#181818';
+            for(let i=0; i<32; i+=4) { ctx.fillRect(0,32+i,32,2); ctx.fillRect(32,i,32,2); }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(8, 8); return tex;
+        }
+
+        function createBrushedMetal() {
+            const c = document.createElement('canvas'); c.width=256; c.height=256;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#999'; ctx.fillRect(0,0,256,256);
+            for(let i=0; i<1500; i++) {
+                ctx.fillStyle = Math.random()>0.5 ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+                ctx.fillRect(0, Math.random()*256, 256, Math.random()*2+1);
+            }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping;
+            tex.repeat.set(2, 2); return tex;
+        }
+
+        function createBamboo() {
+            const c = document.createElement('canvas'); c.width=512; c.height=512;
+            const ctx = c.getContext('2d');
+            ctx.fillStyle = '#dcb68a'; ctx.fillRect(0,0,512,512);
+            for(let i=0; i<800; i++) {
+                ctx.fillStyle = 'rgba(139,69,19,'+(Math.random()*0.15)+')';
+                ctx.fillRect(Math.random()*512, 0, Math.random()*3+1, 512);
+            }
+            ctx.fillStyle = 'rgba(100,50,10,0.4)';
+            for(let i=100; i<512; i+=150) { ctx.fillRect(0, i, 512, 3); ctx.fillRect(0, i-2, 512, 1); }
+            const tex = new THREE.CanvasTexture(c);
+            tex.wrapS = THREE.RepeatWrapping; tex.wrapT = THREE.RepeatWrapping; return tex;
+        }
+
+        const mats = {
+            pla: new THREE.MeshStandardMaterial({color: 0x666666, roughness: 0.8, metalness: 0.1}),
+            petg: new THREE.MeshPhysicalMaterial({color: 0xddffff, transmission: 0.95, opacity: 1, transparent: true, roughness: 0.05, ior: 1.5, thickness: 3.0, clearcoat: 1.0}),
+            carbon: new THREE.MeshPhysicalMaterial({color: 0x333333, roughness: 0.6, metalness: 0.5, map: createCarbonFiber(), clearcoat: 1.0, clearcoatRoughness: 0.1}),
+            aluminum: new THREE.MeshStandardMaterial({color: 0xb0b0b0, roughness: 0.4, metalness: 0.9, map: createBrushedMetal()}),
+            wood: new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.8, metalness: 0.0, map: createBamboo()}),
+            gold: new THREE.MeshStandardMaterial({color: 0xffd700, roughness: 0.15, metalness: 1.0})
+        };
+
+        let currentMesh = null;
+        function loadSTL() {
+            if(currentMesh) scene.remove(currentMesh);
+            const loader = new THREE.STLLoader();
+            loader.load('/imported.stl?t=' + Date.now(), function (geometry) {
+                geometry.center();
+                geometry.computeVertexNormals();
+                const matKey = document.getElementById('matSelect').value;
+                currentMesh = new THREE.Mesh(geometry, mats[matKey]);
+                currentMesh.rotation.x = -Math.PI / 2;
+                scene.add(currentMesh);
+                
+                // Auto-adjust camera
+                geometry.computeBoundingSphere();
+                const radius = geometry.boundingSphere.radius;
+                camera.position.set(radius*1.5, radius*1.5, radius*1.5);
+                controls.target.set(0,0,0);
+                controls.update();
+            });
+        }
+
+        document.getElementById('matSelect').addEventListener('change', (e) => {
+            if(currentMesh) { currentMesh.material = mats[e.target.value]; if(currentMesh.material.map) currentMesh.material.map.needsUpdate = true; }
+        });
+
+        loadSTL();
+
+        function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+        animate();
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    </script>
+</body>
+</html>"""
 
 class NexusHandler(http.server.BaseHTTPRequestHandler):
     def _send_cors(self):
@@ -152,6 +285,9 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 except: pass
             self.send_response(200); self.send_header("Content-type", "application/sla"); self._send_cors(); self.end_headers(); self.wfile.write(dummy_stl)
 
+        elif parsed.path == '/pbr_studio.html':
+            self.send_response(200); self.send_header("Content-type", "text/html"); self.send_header("Content-Length", str(len(PBR_HTML_TEMPLATE.encode('utf-8')))); self._send_cors(); self.end_headers(); self.wfile.write(PBR_HTML_TEMPLATE.encode('utf-8'))
+
         elif parsed.path == '/upload_ui':
             html = """<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta charset="UTF-8"></head><body style="background:#0B0E14; color:#E6EDF3; font-family:sans-serif; text-align:center; padding:20px;"><h2 style="color:#00E676;">🚀 INYECCIÓN WEB NEXUS</h2><div style="background:#161B22; padding:20px; border-radius:8px; border:1px solid #30363D; display:inline-block; width:90%; max-width:400px;"><input type="file" id="f" style="margin-bottom:20px; color:white; width:100%;"><button onclick="up()" style="background:#00E5FF; color:black; padding:15px; width:100%; font-weight:bold; border:none; border-radius:8px; cursor:pointer;">INYECTAR ARCHIVO</button><div id="pb-container" style="display:none; width:100%; background:#30363D; border-radius:4px; margin-top:20px; height:12px; overflow:hidden;"><div id="pb-fill" style="width:0%; background:#00E5FF; height:100%; transition:width 0.2s;"></div></div><p id="s" style="margin-top:15px; font-weight:bold; font-size:15px;"></p></div><script>function up() { var f = document.getElementById('f').files[0]; if(!f) return; var s = document.getElementById('s'); var pbc = document.getElementById('pb-container'); var pbf = document.getElementById('pb-fill'); s.style.color = '#FFAB00'; s.innerText = 'Iniciando inyección...'; pbc.style.display = 'block'; pbf.style.width = '0%'; pbf.style.background = '#00E5FF'; var xhr = new XMLHttpRequest(); xhr.open('POST', '/api/upload', true); xhr.setRequestHeader('File-Name', encodeURIComponent(f.name)); xhr.setRequestHeader('Content-Type', 'application/octet-stream'); xhr.upload.onprogress = function(e) { if (e.lengthComputable) { var pc = (e.loaded / e.total) * 100; pbf.style.width = pc + '%'; s.innerText = 'Inyectando... ' + Math.round(pc) + '%'; } }; xhr.onload = function() { if (xhr.status == 200) { s.style.color = '#00E676'; s.innerText = '✓ ¡ÉXITO! Vuelve a la App y pulsa REFRESCAR.'; pbf.style.width = '100%'; pbf.style.background = '#00E676'; } else { s.style.color = '#FF5252'; s.innerText = '❌ Error: ' + xhr.status; pbf.style.background = '#FF5252'; } }; xhr.onerror = function() { s.style.color = '#FF5252'; s.innerText = '❌ Error de red'; pbf.style.background = '#FF5252'; }; xhr.send(f); }</script></body></html>"""
             self.send_response(200); self.send_header("Content-type", "text/html"); self.send_header("Content-Length", str(len(html.encode('utf-8')))); self._send_cors(); self.end_headers(); self.wfile.write(html.encode('utf-8'))
@@ -180,12 +316,12 @@ threading.Thread(target=lambda: http.server.HTTPServer(("0.0.0.0", LOCAL_PORT), 
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.19 TITAN"
+        page.title = "NEXUS CAD v20.20 PBR TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.19 TITAN | Anti-Undefined Engine Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.20 TITAN | PBR Studio Engine Activo", color="#C51162", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -222,7 +358,6 @@ def main(page: ft.Page):
             sl.on_change = internal_change
             return sl, ft.Row([ft.Text(label, width=110, size=12, color="#E6EDF3"), sl, txt_val])
 
-        # === PARAMETROS GLOBALES ===
         sl_g_w, r_g_w = create_slider("Ancho (GW)", 1, 300, 50, False)
         sl_g_l, r_g_l = create_slider("Largo (GL)", 1, 300, 50, False)
         sl_g_h, r_g_h = create_slider("Alto (GH)", 1, 300, 20, False)
@@ -255,12 +390,8 @@ def main(page: ft.Page):
                 "Neón Cyan": "[0.0, 1.0, 1.0, 0.8]"
             }
             c_val = mat_colors.get(dd_mat.value, "[0.5, 0.5, 0.5, 1.0]")
-            
             header = f"  var GW = {sl_g_w.value}; var GL = {sl_g_l.value}; var GH = {sl_g_h.value}; var GT = {sl_g_t.value}; var G_TOL = {sl_g_tol.value}; var KINE_T = {sl_kine.value}; var MAT_C = {c_val};\n"
-            
             polyfill = "  if(typeof CSG !== 'undefined' && typeof CSG.Matrix4x4 === 'undefined' && typeof Matrix4x4 !== 'undefined') { CSG.Matrix4x4 = Matrix4x4; }\n"
-            
-            # BLOQUE UTILS 100% INMUNE A UNDEFINED
             utils_block = """  var UTILS = {
     trans: function(o, v) { if(!o) return o; var r; try { r = o.translate(v); } catch(e) { try { if(typeof translate !== 'undefined') r = translate(v, o); } catch(e2) {} } return r ? r : o; },
     scale: function(o, v) { if(!o) return o; var r; try { r = o.scale(v); } catch(e) { try { if(typeof scale !== 'undefined') r = scale(v, o); } catch(e2) {} } return r ? r : o; },
@@ -271,7 +402,6 @@ def main(page: ft.Page):
   };
 """
             header += polyfill + utils_block
-            
             param_def = "function getParameterDefinitions() { return [{name: 'KINE_T', type: 'slider', initial: 0, min: 0, max: 360, step: 1, caption: 'Cinemática (º)'}]; }\n"
             c = txt_code.value
             if "getParameterDefinitions" not in c:
@@ -353,9 +483,6 @@ def main(page: ft.Page):
         col_custom = ft.Column([ft.Text("Modo Código Libre (Edita en la pestaña CODE)", color="#00E676")], visible=True)
         def inst(texto): return ft.Text("ℹ️ " + texto, color="#FFD54F", size=11, italic=True)
 
-        # =========================================================
-        # HERRAMIENTAS Y PANELES BÁSICOS
-        # =========================================================
         tf_sketch_pts = ft.TextField(label="Coordenadas (X, Y) - Una por línea", value="0,0\n50,0\n50,20\n25,40\n0,20", multiline=True, height=150, bgcolor="#161B22", color="#00E5FF"); tf_sketch_pts.on_change = update_code_wrapper; sl_sketch_h, r_sketch_h = create_slider("Altura (Z)", 1, 300, 20, False); col_sketcher = ft.Column([ft.Text("Sketcher 2D / Extrusor Libre", color="#2962FF", weight="bold"), inst("Pega una tabla de coordenadas de Excel (separadas por espacio, tabulación o comas). ¡El motor las convierte en 3D automáticamente!"), ft.Container(content=ft.Column([tf_sketch_pts, r_sketch_h]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
         lbl_stl_status = ft.Text("Ningún STL cargado aún en memoria.", color="#8B949E", size=11)
@@ -415,8 +542,6 @@ def main(page: ft.Page):
         sl_clip_d, r_clip_d = create_slider("Ø Cable", 3, 15, 6, False); sl_clip_w, r_clip_w = create_slider("Ancho Adhesivo", 10, 40, 20, False); col_clip_cable = ft.Column([ft.Text("Clip de Cables (Desk)", color="#00E676"), inst("Organizador de cables. Imprime boca abajo. Añade cinta de doble cara en la base plana."), ft.Container(content=ft.Column([r_clip_d, r_clip_w]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
         sl_vr_s, r_vr_s = create_slider("Tamaño Base", 50, 500, 200, False); col_vr_pedestal = ft.Column([ft.Text("Pedestal de Exhibición (Modo VR)", color="#B388FF"), inst("Usa esto como base en el Ensamblador antes de colocar tu modelo encima para verlo en Realidad Virtual."), ft.Container(content=ft.Column([r_vr_s]), bgcolor="#161B22", padding=10, border_radius=8)], visible=False)
 
-
-        # === GENERADOR DE CÓDIGO JS CON HÍBRIDO MÚLTIPLE INYECTADO ===
         def get_stl_base_js():
             sc = sl_stl_sc.value / 100.0; tx = sl_stl_x.value; ty = sl_stl_y.value; tz = sl_stl_z.value
             return f"""  var sc = {sc}; var tx = {tx}; var ty = {ty}; var tz = {tz};
@@ -443,7 +568,6 @@ def main(page: ft.Page):
             code = "function main() {\n"
             
             if h == "custom": pass
-            
             elif h == "sketcher":
                 sanitized_pts = tf_sketch_pts.value.replace("\n", "\\n").replace("`", "")
                 code += f"  var h_ext = {sl_sketch_h.value};\n  var raw_pts = `{sanitized_pts}`;\n"
@@ -459,7 +583,6 @@ def main(page: ft.Page):
   try { return UTILS.mat(CAG.fromPoints(pts).extrude({offset: [0, 0, h_ext]})); } catch(e) { return CSG.cube({radius:[5,5,5]}); }
 }
 """
-
             elif h.startswith("stl"):
                 code += get_stl_base_js()
                 if h == "stl": code += "  return UTILS.mat(dron);\n}"
@@ -494,15 +617,12 @@ def main(page: ft.Page):
                     r = sl_stlpg_r.value; t = sl_stlpg_t.value; px = sl_stlpg_x.value; py = sl_stlpg_y.value
                     code += f"  var out = CSG.cylinder({{start:[{px},{py},0], end:[{px},{py},10], radius:{r+t}, slices:32}});\n  var inn = CSG.cylinder({{start:[{px},{py},-1], end:[{px},{py},11], radius:{r}, slices:32}});\n"
                     code += f"  return UTILS.mat(dron.union(out.subtract(inn)));\n}}"
-
             elif h == "texto":
                 txt_input = tf_texto.value.upper()[:15]; estilo = dd_txt_estilo.value; base = dd_txt_base.value; grabado = sw_txt_grabado.value
                 if not txt_input: txt_input = " "
                 code += f"  var texto = \"{txt_input}\"; var h = GH;\n"
                 code += f"  var font = {{ 'A':[14,17,31,17,17], 'B':[30,17,30,17,30], 'C':[14,17,16,17,14], 'D':[30,17,17,17,30], 'E':[31,16,30,16,31], 'F':[31,16,30,16,16], 'G':[14,17,23,17,14], 'H':[17,17,31,17,17], 'I':[14,4,4,4,14], 'J':[7,2,2,18,12], 'K':[17,18,28,18,17], 'L':[16,16,16,16,31], 'M':[17,27,21,17,17], 'N':[17,25,21,19,17], 'O':[14,17,17,17,14], 'P':[30,17,30,16,16], 'Q':[14,17,21,18,13], 'R':[30,17,30,18,17], 'S':[14,16,14,1,14], 'T':[31,4,4,4,4], 'U':[17,17,17,17,14], 'V':[17,17,17,10,4], 'W':[17,17,21,27,17], 'X':[17,10,4,10,17], 'Y':[17,10,4,4,4], 'Z':[31,2,4,8,31], ' ':[0,0,0,0,0], '0':[14,17,17,17,14], '1':[4,12,4,4,14], '2':[14,1,14,16,31], '3':[14,1,14,1,14], '4':[18,18,31,2,2], '5':[31,16,14,1,14], '6':[14,16,30,17,14], '7':[31,1,2,4,8], '8':[14,17,14,17,14], '9':[14,17,15,1,14] }};\n"
-                z_start = "h/2" if not grabado else "h - 1"
-                h_letra = "h/2" if not grabado else "h+2"
-
+                z_start = "h/2" if not grabado else "h - 1"; h_letra = "h/2" if not grabado else "h+2"
                 if "Voxel" in estilo:
                     es_grueso = "1.1" if "Grueso" in estilo else "2.1"
                     code += f"""
@@ -540,7 +660,6 @@ def main(page: ft.Page):
                 elif base == "Soporte de Mesa": code += "  var bc = CSG.cube({center:[totalL/2-3, 3, h/4], radius:[totalL/2+2, 5, h/4]});\n  var pata = CSG.cube({center:[totalL/2-3, -5, h/8], radius:[totalL/2+2, 10, h/8]});\n  baseObj = bc.union(pata);\n"
                 elif base == "Colgante Militar": code += "  var b_cen = CSG.cube({center:[totalL/2-3, 4, h/4], radius:[totalL/2-1, 10, h/4]});\n  var b_izq = CSG.cylinder({start:[-4, 4, 0], end:[-4, 4, h/2], radius:10, slices:32});\n  var b_der = CSG.cylinder({start:[totalL-2, 4, 0], end:[totalL-2, 4, h/2], radius:10, slices:32});\n  var agujero = CSG.cylinder({start:[-8, 4, -1], end:[-8, 4, h], radius:2.5, slices:16});\n  baseObj = b_cen.union(b_izq).union(b_der).subtract(agujero);\n"
                 elif base == "Placa Ovalada": code += "  var c1 = CSG.cylinder({start:[-2, 4, 0], end:[-2, 4, h/2], radius:12, slices:64});\n  var c2 = CSG.cylinder({start:[totalL-4, 4, 0], end:[totalL-4, 4, h/2], radius:12, slices:64});\n  var p_med = CSG.cube({center:[totalL/2-3, 4, h/4], radius:[totalL/2-1, 12, h/4]});\n  baseObj = p_med.union(c1).union(c2);\n"
-
                 code += "  if(baseObj) {\n"
                 if grabado: code += "      return UTILS.mat(baseObj.subtract(pText));\n  } else {\n      return UTILS.mat(pText);\n  }\n}"
                 else: code += "      return UTILS.mat(baseObj.union(pText));\n  } else {\n      return UTILS.mat(pText);\n  }\n}"
@@ -550,18 +669,15 @@ def main(page: ft.Page):
                 code += f"  var pieza = CSG.cube({{center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]}});\n"
                 if g > 0: code += f"  var int_box = CSG.cube({{center:[0,0,GH/2 + {g}], radius:[GW/2 - {g}, GL/2 - {g}, GH/2]}});\n  pieza = pieza.subtract(int_box);\n"
                 code += f"  return UTILS.mat(pieza);\n}}"
-
             elif h == "cilindro":
                 rint = sl_p_rint.value; c = int(sl_p_lados.value)
                 code += f"  var pieza = CSG.cylinder({{start:[0,0,0], end:[0,0,GH], radius:GW/2, slices:{c}}});\n"
                 if rint > 0: code += f"  var int_cyl = CSG.cylinder({{start:[0,0,-1], end:[0,0,GH+2], radius:{rint}, slices:{c}}});\n  pieza = pieza.subtract(int_cyl);\n"
                 code += f"  return UTILS.mat(pieza);\n}}"
-
             elif h == "laser":
                 code += f"  var w = {sl_las_x.value}; var l = {sl_las_y.value}; var z_cut = {sl_las_z.value};\n"
                 code += f"  var base_obj = CSG.cube({{center:[0,0,10], radius:[w/2, l/2, 10]}}).subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,21], radius:5, slices:16}}));\n"
                 code += f"  var cut_plane = CSG.cube({{center:[0,0,z_cut], radius:[w, l, 0.5]}});\n  return UTILS.mat(base_obj.intersect(cut_plane));\n}}"
-
             elif h == "array_lin":
                 code += f"  var filas = {int(sl_alin_f.value)}; var columnas = {int(sl_alin_c.value)}; var dx = {sl_alin_dx.value}; var dy = {sl_alin_dy.value}; var h = {sl_alin_h.value};\n"
                 code += f"  var array_obj = null; var start_x = -((columnas - 1) * dx) / 2; var start_y = -((filas - 1) * dy) / 2;\n"
@@ -570,7 +686,6 @@ def main(page: ft.Page):
                 code += f"      var pieza = CSG.cylinder({{start:[px,py,0], end:[px,py,h], radius:5, slices:16}});\n"
                 code += f"      if(!array_obj) array_obj = pieza; else array_obj = array_obj.union(pieza);\n"
                 code += f"  }} }}\n  return UTILS.mat(array_obj || CSG.cube({{radius:[1,1,1]}}));\n}}"
-
             elif h == "array_pol":
                 code += f"  var n = {int(sl_apol_n.value)}; var radio_corona = {sl_apol_r.value}; var r_pieza = {sl_apol_rp.value}; var h = {sl_apol_h.value};\n"
                 code += f"  var array_obj = null;\n"
@@ -579,7 +694,6 @@ def main(page: ft.Page):
                 code += f"      if(!array_obj) array_obj = pieza; else array_obj = array_obj.union(pieza);\n  }}\n"
                 code += f"  var base = CSG.cylinder({{start:[0,0,0], end:[0,0,h/2], radius:radio_corona + r_pieza + 2, slices:32}});\n"
                 code += f"  if(array_obj) base = base.subtract(array_obj);\n  return UTILS.mat(base);\n}}"
-
             elif h == "loft":
                 code += f"  var side_base = {sl_loft_w.value}; var r_top = {sl_loft_r.value}; var h = {sl_loft_h.value}; var wall = {sl_loft_g.value};\n"
                 code += f"  var res = 40; var dz = h / res; var loft_obj = null; var hueco = null;\n"
@@ -596,9 +710,7 @@ def main(page: ft.Page):
                 code += f"          var p_int = CSG.cylinder({{start:[x_int, y_int, z], end:[x_int, y_int, z+dz+0.1], radius:wall/4, slices:4}});\n"
                 code += f"          if(!loft_obj) loft_obj = p_ext; else loft_obj = loft_obj.union(p_ext);\n"
                 code += f"          if(!hueco) hueco = p_int; else hueco = hueco.union(p_int);\n      }}\n  }}\n"
-                code += f"  if(hueco) loft_obj = loft_obj.subtract(hueco);\n"
-                code += f"  return UTILS.mat(loft_obj || CSG.cube({{radius:[1,1,1]}}));\n}}"
-
+                code += f"  if(hueco) loft_obj = loft_obj.subtract(hueco);\n  return UTILS.mat(loft_obj || CSG.cube({{radius:[1,1,1]}}));\n}}"
             elif h == "panal":
                 code += f"  var w = {sl_pan_x.value}; var l = {sl_pan_y.value}; var h = {sl_pan_z.value}; var r_hex = {sl_pan_r.value}; var t = 1.5;\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[w/2, l/2, h/2]}}); var int_box = CSG.cube({{center:[0,0,h/2], radius:[w/2-t, l/2-t, h/2+1]}});\n"
@@ -610,7 +722,6 @@ def main(page: ft.Page):
                 code += f"          var hex = CSG.cylinder({{start:[cx, y, -1], end:[cx, y, h+1], radius:r_hex, slices:6}});\n"
                 code += f"          if(!holes) holes = hex; else holes = holes.union(hex);\n      }}\n  }} }}\n"
                 code += f"  if(holes) core_vol = core_vol.subtract(holes);\n  return UTILS.mat(frame.union(core_vol));\n}}"
-
             elif h == "voronoi":
                 code += f"  var r_out = {sl_vor_ro.value}; var r_in = {sl_vor_ri.value}; var h = {sl_vor_h.value}; var d = {int(sl_vor_d.value)};\n"
                 code += f"  var pipe = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:r_out, slices:32}}).subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:r_in, slices:32}}));\n"
@@ -621,7 +732,6 @@ def main(page: ft.Page):
                 code += f"          var hole = CSG.sphere({{center:[cx, cy, z], radius:r_esfera, resolution:8}});\n"
                 code += f"          if(!holes) holes = hole; else holes = holes.union(hole);\n      }}\n      t++;\n  }}\n"
                 code += f"  if(holes) return UTILS.mat(pipe.subtract(holes));\n  return UTILS.mat(pipe);\n}}"
-
             elif h == "evolvente":
                 code += f"  var dientes = {int(sl_evo_d.value)}; var m = {sl_evo_m.value}; var h = {sl_evo_h.value};\n"
                 code += f"  var r_pitch = (dientes * m) / 2; var r_ext = r_pitch + m; var r_root = r_pitch - 1.25 * m;\n"
@@ -637,7 +747,6 @@ def main(page: ft.Page):
                 code += f"      gear = gear.union(t1).union(t2).union(t3);\n  }}\n"
                 code += f"  var hole = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius: r_root * 0.3, slices:32}});\n"
                 code += f"  return UTILS.mat(UTILS.rotZ(gear.subtract(hole), KINE_T));\n}}"
-
             elif h == "cremallera":
                 code += f"  var dientes = {int(sl_crem_d.value)}; var m = {sl_crem_m.value}; var h = {sl_crem_h.value}; var w = {sl_crem_w.value};\n"
                 code += f"  var pitch = Math.PI * m; var len = dientes * pitch;\n"
@@ -646,7 +755,6 @@ def main(page: ft.Page):
                 code += f"      var t1 = CSG.cube({{center:[px, w + m*0.2, h/2], radius:[t_w*0.4, m*0.3, h/2]}});\n"
                 code += f"      var t2 = CSG.cube({{center:[px, w + m*0.7, h/2], radius:[t_w*0.2, m*0.4, h/2]}});\n"
                 code += f"      rack = rack.union(t1).union(t2);\n  }}\n  return UTILS.mat(UTILS.trans(rack, [KINE_T/10, 0, 0]));\n}}"
-
             elif h == "conico":
                 code += f"  var dientes = {int(sl_con_d.value)}; var rb = {sl_con_rb.value}; var rt = {sl_con_rt.value}; var h = {sl_con_h.value};\n"
                 code += f"  var res = 20; var dz = h / res; var gear = null; var m = rb / (dientes/2);\n"
@@ -662,7 +770,6 @@ def main(page: ft.Page):
                 code += f"          gear = gear.union(t1).union(t2);\n      }}\n  }}\n"
                 code += f"  var hole = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius: rt * 0.3, slices:16}});\n"
                 code += f"  if(gear) return UTILS.mat(UTILS.rotZ(gear.subtract(hole), KINE_T));\n  return UTILS.mat(CSG.cube({{radius:[1,1,1]}}));\n}}"
-
             elif h == "multicaja":
                 code += f"  var w = {sl_mc_x.value}; var l = {sl_mc_y.value}; var h = {sl_mc_z.value}; var tol = {sl_mc_tol.value}; var sep = {sl_mc_sep.value};\n"
                 code += f"  var t = 2; var ext = CSG.cube({{center:[0,0,h/2], radius:[w/2, l/2, h/2]}});\n"
@@ -670,7 +777,6 @@ def main(page: ft.Page):
                 code += f"  var offsetZ = h + sep + (KINE_T/5); var tapa_b = CSG.cube({{center:[0,0, offsetZ + t/2], radius:[w/2, l/2, t/2]}});\n"
                 code += f"  var tapa_i = CSG.cube({{center:[0,0, offsetZ - t/2], radius:[w/2-t-tol, l/2-t-tol, t/2]}}); var tapa = tapa_b.union(tapa_i);\n"
                 code += f"  return UTILS.mat(caja.union(tapa));\n}}"
-
             elif h == "perfil":
                 code += f"  var puntas = {int(sl_perf_p.value)}; var rext = {sl_perf_re.value}; var rint = {sl_perf_ri.value}; var h = {sl_perf_h.value};\n"
                 code += f"  var pieza = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:rint, slices:32}});\n"
@@ -678,7 +784,6 @@ def main(page: ft.Page):
                 code += f"  for(var i=0; i<puntas; i++) {{\n     var a = i * d_theta; var px = Math.cos(a) * (rint + r_punta*0.8); var py = Math.sin(a) * (rint + r_punta*0.8);\n"
                 code += f"     var punta = CSG.cylinder({{start:[px, py, 0], end:[px, py, h], radius:r_punta, slices:16}});\n"
                 code += f"     pieza = pieza.union(punta);\n  }}\n  return UTILS.mat(UTILS.rotZ(pieza, KINE_T));\n}}"
-
             elif h == "revolucion":
                 code += f"  var h = {sl_rev_h.value}; var r1 = {sl_rev_r1.value}; var r2 = {sl_rev_r2.value}; var grosor = {sl_rev_g.value};\n"
                 code += f"  var res = 60; var dz = h / res; var solido = null; var hueco = null;\n"
@@ -689,14 +794,12 @@ def main(page: ft.Page):
                 code += f"         var capa_h = CSG.cylinder({{start:[0,0,z], end:[0,0,z+dz+0.1], radius:r_int, slices:32}});\n"
                 code += f"         if(!hueco) hueco = capa_h; else hueco = hueco.union(capa_h);\n      }}\n  }}\n"
                 code += f"  if(grosor > 0 && hueco) solido = solido.subtract(hueco);\n  return UTILS.mat(solido);\n}}"
-
             elif h == "escuadra":
                 code += f"  var l = {sl_l_largo.value}; var w = {sl_l_ancho.value}; var t = {sl_l_grosor.value}; var r = {sl_l_hueco.value}; var chaf = {sl_l_chaf.value};\n"
                 code += f"  var base = CSG.cube({{center:[l/2, w/2, t/2], radius:[l/2, w/2, t/2]}}); var wall = CSG.cube({{center:[t/2, w/2, l/2], radius:[t/2, w/2, l/2]}}); var pieza = base.union(wall);\n"
                 if sl_l_chaf.value > 0: code += f"  var fillet = CSG.cylinder({{start:[t, 0, t], end:[t, w, t], radius:chaf, slices:16}}); pieza = pieza.union(fillet);\n"
                 if sl_l_hueco.value > 0: code += f"  var h1 = CSG.cylinder({{start:[l*0.7, w/2, -1], end:[l*0.7, w/2, t+1], radius:r, slices:32}});\n  var h2 = CSG.cylinder({{start:[-1, w/2, l*0.7], end:[t+1, w/2, l*0.7], radius:r, slices:32}});\n  pieza = pieza.subtract(h1).subtract(h2);\n"
                 code += f"  return UTILS.mat(pieza);\n}}"
-                
             elif h == "engranaje":
                 code += f"  var dientes = {int(sl_e_dientes.value)}; var r = {sl_e_radio.value}; var h = {sl_e_grosor.value};\n"
                 code += f"  var d_x = r*0.15; var d_y = r*0.2;\n  var pieza = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:r, slices:64}});\n"
@@ -704,7 +807,6 @@ def main(page: ft.Page):
                 code += f"    var diente = CSG.cube({{center:[Math.cos(a)*r, Math.sin(a)*r, h/2], radius:[d_x, d_y, h/2]}}); pieza = pieza.union(diente);\n  }}\n"
                 if sl_e_eje.value > 0: code += f"  var hueco = CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:{sl_e_eje.value} + G_TOL, slices:32}}); pieza = pieza.subtract(hueco);\n"
                 code += f"  return UTILS.mat(UTILS.rotZ(pieza, KINE_T));\n}}"
-
             elif h == "pcb":
                 code += f"  var px = {sl_pcb_x.value}; var py = {sl_pcb_y.value}; var h = {sl_pcb_h.value}; var t = {sl_pcb_t.value};\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[px/2 + t, py/2 + t, h/2]}});\n"
@@ -713,7 +815,6 @@ def main(page: ft.Page):
                 code += f"  for(var i=0; i<4; i++) {{\n    var cyl = CSG.cylinder({{start:[m[i][0]*dx, m[i][1]*dy, 0], end:[m[i][0]*dx, m[i][1]*dy, h-2], radius: 3.5, slices:16}});\n"
                 code += f"    var hole = CSG.cylinder({{start:[m[i][0]*dx, m[i][1]*dy, 2], end:[m[i][0]*dx, m[i][1]*dy, h], radius: 1.5 + (G_TOL/2), slices:16}});\n"
                 code += f"    pieza = pieza.union(cyl).subtract(hole);\n  }}\n  return UTILS.mat(pieza);\n}}"
-
             elif h == "vslot":
                 code += f"  var l = {sl_v_l.value};\n  var pieza = CSG.cube({{center:[0,0,l/2], radius:[10,10,l/2]}});\n"
                 code += f"  var ch = CSG.cylinder({{start:[0,0,-1], end:[0,0,l+1], radius:2.1 + (G_TOL/2), slices:32}}); pieza = pieza.subtract(ch);\n"
@@ -722,7 +823,6 @@ def main(page: ft.Page):
                 code += f"  pieza = pieza.subtract(CSG.cube({{center:[10,0,l/2], radius:[2,3,l/2+1]}})).subtract(CSG.cube({{center:[8.5,0,l/2], radius:[1.5,5,l/2+1]}}));\n"
                 code += f"  pieza = pieza.subtract(CSG.cube({{center:[-10,0,l/2], radius:[2,3,l/2+1]}})).subtract(CSG.cube({{center:[-8.5,0,l/2], radius:[1.5,5,l/2+1]}}));\n"
                 code += f"  return UTILS.mat(pieza);\n}}"
-
             elif h == "bisagra":
                 code += f"  var l = {sl_bi_l.value}; var d = {sl_bi_d.value};\n"
                 code += f"  var fix = CSG.cylinder({{start:[0,0,0], end:[0,0,l/3], radius:d/2, slices:32}});\n"
@@ -733,7 +833,6 @@ def main(page: ft.Page):
                 code += f"  var fijo = fix.union(fix2).subtract(cut_pin).union(pin);\n  var movil = move.subtract(cut_pin);\n"
                 code += f"  movil = UTILS.trans(movil, [0,0,-l/2]); movil = UTILS.rotX(movil, KINE_T); movil = UTILS.trans(movil, [0,0,l/2]);\n"
                 code += f"  return UTILS.mat(fijo.union(movil));\n}}"
-
             elif h == "abrazadera":
                 code += f"  var diam = {sl_clamp_d.value}; var grosor = {sl_clamp_g.value}; var ancho = {sl_clamp_w.value};\n"
                 code += f"  var ext = CSG.cylinder({{start:[0,0,0], end:[0,0,ancho], radius:(diam/2)+grosor, slices:64}});\n"
@@ -746,7 +845,6 @@ def main(page: ft.Page):
                 code += f"  var m3 = CSG.cylinder({{start:[ distPestana, 10, ancho/2 ], end:[ distPestana, -10, ancho/2 ], radius:1.7 + (G_TOL/2), slices:16}});\n"
                 code += f"  var m3_2 = CSG.cylinder({{start:[ -distPestana, 10, ancho/2 ], end:[ -distPestana, -10, ancho/2 ], radius:1.7 + (G_TOL/2), slices:16}});\n"
                 code += f"  return UTILS.mat(arco.union(pestana).union(pestana2).subtract(m3).subtract(m3_2));\n}}"
-
             elif h == "fijacion":
                 m, l_tornillo = sl_fij_m.value, sl_fij_l.value
                 r_hex = (m * 1.8) / 2; h_cabeza = m * 0.8; r_eje = m / 2
@@ -762,7 +860,6 @@ def main(page: ft.Page):
                     code += f"  for(var z = h_cabeza + 1; z < h_cabeza + l_tornillo - 1; z += paso*1.5) {{\n"
                     code += f"      var anillo = CSG.cylinder({{start:[0,0,z], end:[0,0,z+paso], radius:({r_eje} - G_TOL), slices:16}});\n"
                     code += f"      pieza = pieza.union(anillo);\n  }}\n  return UTILS.mat(UTILS.rotZ(pieza, KINE_T));\n}}"
-
             elif h == "rodamiento":
                 code += f"  var d_int = {sl_rod_dint.value}; var d_ext = {sl_rod_dext.value}; var h = {sl_rod_h.value};\n"
                 code += f"  var pista_ext = CSG.cylinder({{start:[0,0,0], end:[0,0,h], radius:d_ext/2, slices:64}}).subtract( CSG.cylinder({{start:[0,0,-1], end:[0,0,h+1], radius:(d_ext/2)-2 + G_TOL, slices:64}}) );\n"
@@ -774,7 +871,6 @@ def main(page: ft.Page):
                 code += f"  for(var i=0; i<n_bolas; i++) {{\n      var a = (i * Math.PI * 2) / n_bolas; var bx = Math.cos(a + KINE_T/100) * radio_centro; var by = Math.sin(a + KINE_T/100) * radio_centro;\n"
                 code += f"      var bola = CSG.sphere({{center:[bx, by, h/2], radius:(r_espacio*0.95) - (G_TOL/2), resolution:16}});\n"
                 code += f"      pieza = pieza.union(bola);\n  }}\n  return UTILS.mat(pieza);\n}}"
-
             elif h == "planetario":
                 code += f"  var r_sol = {sl_plan_rs.value}; var r_planeta = {sl_plan_rp.value}; var h = {sl_plan_h.value};\n"
                 code += f"  var r_anillo = r_sol + (r_planeta*2); var dist_centros = r_sol + r_planeta;\n"
@@ -805,7 +901,6 @@ def main(page: ft.Page):
                 code += f"      if(!anillo_dientes) anillo_dientes = diente_c; else anillo_dientes = anillo_dientes.union(diente_c);\n  }}\n"
                 code += f"  if(anillo_dientes) corona = corona.union(anillo_dientes);\n"
                 code += f"  var obj = sol.union(corona);\n  if(planetas) obj = obj.union(planetas);\n  return UTILS.mat(obj);\n}}"
-
             elif h == "polea":
                 code += f"  var dientes = {int(sl_pol_t.value)}; var ancho = {sl_pol_w.value}; var r_eje = {sl_pol_d.value/2};\n"
                 code += f"  var pitch = 2; var r_primitivo = (dientes * pitch) / (2 * Math.PI); var r_ext = r_primitivo - 0.25;\n"
@@ -819,7 +914,6 @@ def main(page: ft.Page):
                 code += f"  var tapa = CSG.cylinder({{start:[0,0,1.5+ancho], end:[0,0,3+ancho], radius:r_ext + 1, slices:64}});\n"
                 code += f"  var polea = base.union(cuerpo).union(tapa);\n"
                 code += f"  polea = polea.subtract(CSG.cylinder({{start:[0,0,-1], end:[0,0,5+ancho], radius:r_eje + (G_TOL/2), slices:32}}));\n  return UTILS.mat(UTILS.rotZ(polea, KINE_T));\n}}"
-
             elif h == "helice":
                 code += f"  var rad = {sl_hel_r.value}; var n = {int(sl_hel_n.value)}; var pitch = {sl_hel_p.value};\n"
                 code += f"  var hub = CSG.cylinder({{start:[0,0,0], end:[0,0,10], radius:8, slices:32}});\n"
@@ -829,7 +923,6 @@ def main(page: ft.Page):
                 code += f"    var aspa = CSG.cylinder({{start:[6*dx, 6*dy, 5 - (pitch/10)], end:[rad*dx, rad*dy, 5 + (pitch/10)], radius: 3, slices: 4}});\n"
                 code += f"    if(!aspas) aspas = aspa; else aspas = aspas.union(aspa);\n  }}\n"
                 code += f"  if(aspas) hub = hub.union(aspas);\n  return UTILS.mat(UTILS.rotZ(hub.subtract(agujero), KINE_T));\n}}"
-
             elif h == "rotula":
                 code += f"  var r_bola = {sl_rot_r.value};\n"
                 code += f"  var bola = CSG.sphere({{center:[0,0,0], radius:r_bola, resolution:32}}); var eje_bola = CSG.cylinder({{start:[0,0,0], end:[0,0,-r_bola*2], radius:r_bola*0.6, slices:32}});\n"
@@ -837,7 +930,6 @@ def main(page: ft.Page):
                 code += f"  var copa_ext = CSG.cylinder({{start:[0,0,-r_bola*0.2], end:[0,0,r_bola*1.5], radius:r_bola+4, slices:32}});\n"
                 code += f"  var hueco_bola = CSG.sphere({{center:[0,0,0], radius:r_bola+G_TOL, resolution:32}}); var apertura = CSG.cylinder({{start:[0,0,r_bola*0.5], end:[0,0,r_bola*2], radius:r_bola*0.8, slices:32}});\n"
                 code += f"  var componente_copa = copa_ext.subtract(hueco_bola).subtract(apertura);\n  return UTILS.mat(componente_bola.union(componente_copa));\n}}"
-
             elif h == "carcasa":
                 code += f"  var w = {sl_car_x.value}; var l = {sl_car_y.value}; var h = {sl_car_z.value}; var t = {sl_car_t.value};\n"
                 code += f"  var ext = CSG.cube({{center:[0,0,h/2], radius:[w/2, l/2, h/2]}}); var int_box = CSG.cube({{center:[0,0,(h/2)+t], radius:[(w/2)-t, (l/2)-t, h/2]}}); var base = ext.subtract(int_box);\n"
@@ -850,7 +942,6 @@ def main(page: ft.Page):
                 code += f"          var agujero = CSG.cylinder({{start:[vx,vy,-1], end:[vx,vy,t+1], radius:2, slices:8}});\n"
                 code += f"          if(!vents) vents = agujero; else vents = vents.union(agujero);\n      }}\n  }}\n"
                 code += f"  if(vents) base = base.subtract(vents);\n  return UTILS.mat(base);\n}}"
-
             elif h == "muelle":
                 code += f"  var r_res = {sl_mue_r.value}; var r_hilo = {sl_mue_h.value}; var h = {sl_mue_alt.value}; var vueltas = {sl_mue_v.value};\n"
                 code += f"  var resorte = null; var pasos = Math.floor(vueltas * 24); var paso_z = h / pasos; var a_step = (Math.PI * 2 * vueltas) / pasos;\n"
@@ -860,7 +951,6 @@ def main(page: ft.Page):
                 code += f"      var seg = CSG.cylinder({{start:[x1,y1,z1], end:[x2,y2,z2], radius:r_hilo, slices:8}});\n"
                 code += f"      var esp = CSG.sphere({{center:[x2,y2,z2], radius:r_hilo, resolution:8}});\n"
                 code += f"      if(!resorte) resorte = seg.union(esp); else resorte = resorte.union(seg).union(esp);\n  }}\n  return UTILS.mat(resorte);\n}}"
-
             elif h == "acme":
                 code += f"  var r = {sl_acme_d.value/2}; var pitch = {sl_acme_p.value}; var len = {sl_acme_l.value};\n"
                 code += f"  var r_core = r - (pitch * 0.4); var eje = CSG.cylinder({{start:[0,0,0], end:[0,0,len], radius:r_core, slices:32}});\n"
@@ -869,7 +959,6 @@ def main(page: ft.Page):
                 code += f"      var seg = CSG.cylinder({{start:[Math.cos(a1)*r, Math.sin(a1)*r, z1], end:[Math.cos(a2)*r, Math.sin(a2)*r, z2], radius:w, slices:8}});\n"
                 code += f"      if(!thread) thread = seg; else thread = thread.union(seg);\n  }}\n"
                 code += f"  if(thread) eje = eje.union(thread);\n  return UTILS.mat(UTILS.rotZ(eje, KINE_T));\n}}"
-
             elif h == "codo":
                 code += f"  var r_tubo = {sl_codo_r.value}; var r_curva = {sl_codo_c.value}; var angulo = {sl_codo_a.value}; var grosor = {sl_codo_g.value};\n"
                 code += f"  var codo = null; var pasos = Math.max(8, Math.floor(angulo / 5));\n"
@@ -885,7 +974,6 @@ def main(page: ft.Page):
                 code += f"         var isf = CSG.sphere({{center:[x2,y2,0], radius:r_tubo-grosor, resolution:12}});\n"
                 code += f"         var hol = int_c.union(isf); if(!hueco) hueco = hol; else hueco = hueco.union(hol);\n"
                 code += f"     }}\n     if(hueco) codo = codo.subtract(hueco);\n  }}\n  return UTILS.mat(codo);\n}}"
-
             elif h == "naca":
                 code += f"  var cuerda = {sl_naca_c.value}; var grosor = {sl_naca_g.value}; var envergadura = {sl_naca_e.value};\n"
                 code += f"  var ala = null; var num_pasos = 40;\n"
@@ -894,7 +982,6 @@ def main(page: ft.Page):
                 code += f"      var x_real = x * cuerda; var yt_real = Math.max(yt * cuerda, 0.1);\n"
                 code += f"      var cyl = CSG.cylinder({{start:[x_real, 0, 0], end:[x_real, 0, envergadura], radius: yt_real, slices: 16}});\n"
                 code += f"      if(!ala) ala = cyl; else ala = ala.union(cyl);\n  }}\n  return UTILS.mat(ala);\n}}"
-
             elif h == "stand_movil":
                 code += f"  var ang = {sl_st_ang.value} * Math.PI / 180; var w = {sl_st_w.value}; var t = {sl_st_t.value};\n"
                 code += f"  var base = CSG.cube({{center:[0, -20, t/2], radius:[w/2, 40, t/2]}});\n"
@@ -902,7 +989,6 @@ def main(page: ft.Page):
                 code += f"  var back = CSG.cube({{center:[0, dy/2, dx/2], radius:[w/2, dy/2, dx/2]}});\n"
                 code += f"  var lip = CSG.cube({{center:[0, -50, t + 5], radius:[w/2, t/2, 5]}});\n"
                 code += f"  return UTILS.mat(base.union(back).union(lip));\n}}"
-
             elif h == "clip_cable":
                 code += f"  var d = {sl_clip_d.value}; var w = {sl_clip_w.value}; var t = 3;\n"
                 code += f"  var base = CSG.cube({{center:[0, 0, t/2], radius:[w/2, w/2, t/2]}});\n"
@@ -910,7 +996,6 @@ def main(page: ft.Page):
                 code += f"  var hueco = CSG.cylinder({{start:[0,0,t-1], end:[0,0,t+w+1], radius:(d/2), slices:32}});\n"
                 code += f"  var slot = CSG.cube({{center:[0, d, t+(w/2)], radius:[(d/2)-0.5, d, w/2+1]}});\n"
                 code += f"  return UTILS.mat(base.union(anillo).subtract(hueco).subtract(slot));\n}}"
-
             elif h == "vr_pedestal":
                 code += f"  var s = {sl_vr_s.value};\n"
                 code += f"  var base1 = CSG.cube({{center:[0, 0, 10], radius:[s/2, s/2, 10]}});\n"
@@ -926,23 +1011,7 @@ def main(page: ft.Page):
         def select_tool(nombre_herramienta):
             nonlocal herramienta_actual
             herramienta_actual = nombre_herramienta
-            
-            tool_panels = {
-                "custom": col_custom, "sketcher": col_sketcher,
-                "stl": col_stl, "stl_flatten": col_stl_flatten, "stl_split": col_stl_split,
-                "stl_crop": col_stl_crop, "stl_drill": col_stl_drill, "stl_mount": col_stl_mount, "stl_ears": col_stl_ears,
-                "stl_patch": col_stl_patch, "stl_honeycomb": col_stl_honeycomb, "stl_propguard": col_stl_propguard,
-                "texto": col_texto, "cubo": col_cubo, "cilindro": col_cilindro, "laser": col_laser,
-                "array_lin": col_array_lin, "array_pol": col_array_pol, "loft": col_loft, "panal": col_panal,
-                "voronoi": col_voronoi, "evolvente": col_evolvente, "cremallera": col_cremallera, "conico": col_conico,
-                "multicaja": col_multicaja, "perfil": col_perfil, "revolucion": col_revolucion, "escuadra": col_escuadra,
-                "engranaje": col_engranaje, "pcb": col_pcb, "vslot": col_vslot, "bisagra": col_bisagra,
-                "abrazadera": col_abrazadera, "fijacion": col_fijacion, "rodamiento": col_rodamiento,
-                "planetario": col_planetario, "polea": col_polea, "helice": col_helice, "rotula": col_rotula,
-                "carcasa": col_carcasa, "muelle": col_muelle, "acme": col_acme, "codo": col_codo, "naca": col_naca,
-                "stand_movil": col_stand_movil, "clip_cable": col_clip_cable, "vr_pedestal": col_vr_pedestal
-            }
-            
+            tool_panels = {"custom": col_custom, "sketcher": col_sketcher, "stl": col_stl, "stl_flatten": col_stl_flatten, "stl_split": col_stl_split, "stl_crop": col_stl_crop, "stl_drill": col_stl_drill, "stl_mount": col_stl_mount, "stl_ears": col_stl_ears, "stl_patch": col_stl_patch, "stl_honeycomb": col_stl_honeycomb, "stl_propguard": col_stl_propguard, "texto": col_texto, "cubo": col_cubo, "cilindro": col_cilindro, "laser": col_laser, "array_lin": col_array_lin, "array_pol": col_array_pol, "loft": col_loft, "panal": col_panal, "voronoi": col_voronoi, "evolvente": col_evolvente, "cremallera": col_cremallera, "conico": col_conico, "multicaja": col_multicaja, "perfil": col_perfil, "revolucion": col_revolucion, "escuadra": col_escuadra, "engranaje": col_engranaje, "pcb": col_pcb, "vslot": col_vslot, "bisagra": col_bisagra, "abrazadera": col_abrazadera, "fijacion": col_fijacion, "rodamiento": col_rodamiento, "planetario": col_planetario, "polea": col_polea, "helice": col_helice, "rotula": col_rotula, "carcasa": col_carcasa, "muelle": col_muelle, "acme": col_acme, "codo": col_codo, "naca": col_naca, "stand_movil": col_stand_movil, "clip_cable": col_clip_cable, "vr_pedestal": col_vr_pedestal}
             for k, p in tool_panels.items(): p.visible = (k == nombre_herramienta)
             panel_stl_transform.visible = nombre_herramienta.startswith("stl")
             generate_param_code(); page.update()
@@ -981,11 +1050,9 @@ def main(page: ft.Page):
             ft.Text("🛠️ Ingeniería:", size=12, color="#FF9100"), cat_ingenieria,
             ft.Text("📦 Geometría Básica:", size=12, color="#8B949E"), cat_basico,
             ft.Divider(color="#30363D"),
-            
             panel_stl_transform,
             col_custom, col_sketcher, col_stl, col_stl_flatten, col_stl_split, col_stl_crop, col_stl_drill, col_stl_mount, col_stl_ears, col_stl_patch, col_stl_honeycomb, col_stl_propguard,
             col_texto, col_cubo, col_cilindro, col_laser, col_array_lin, col_array_pol, col_loft, col_panal, col_voronoi, col_evolvente, col_cremallera, col_conico, col_multicaja, col_perfil, col_revolucion, col_escuadra, col_engranaje, col_pcb, col_vslot, col_bisagra, col_abrazadera, col_fijacion, col_rodamiento, col_planetario, col_polea, col_helice, col_rotula, col_carcasa, col_muelle, col_acme, col_codo, col_naca, col_stand_movil, col_clip_cable, col_vr_pedestal,
-            
             ft.Container(height=10),
             ft.ElevatedButton(content=ft.Text("▶ ENVIAR AL WORKER (RENDER 3D)", color="black"), on_click=lambda _: run_render(), bgcolor="#00E676", height=60, width=float('inf'))
         ], expand=True, scroll="auto")
@@ -995,9 +1062,6 @@ def main(page: ft.Page):
             help_box, row_snippets, txt_code
         ], expand=True)
 
-        # =========================================================
-        # SECCIÓN VISOR 3D + TELEMETRÍA GRÁFICA + ENLACE VR
-        # =========================================================
         pb_cpu = ft.ProgressBar(width=100, color="#FFAB00", bgcolor="#30363D", value=0, expand=True)
         txt_cpu_val = ft.Text("0.0%", size=11, color="#FFAB00", width=40, text_align="right")
         pb_ram = ft.ProgressBar(width=100, color="#00E5FF", bgcolor="#30363D", value=0, expand=True)
@@ -1041,13 +1105,26 @@ def main(page: ft.Page):
 
         view_visor = ft.Column([
             ft.Container(height=5), hw_panel, ft.Container(height=5), panel_vr, ft.Container(height=5),
-            ft.Text("Motor Web Worker / Multi-Hilo", text_align="center", color="#00E5FF", weight="bold"),
-            ft.Row([ft.ElevatedButton(content=ft.Text("🔄 ABRIR VISOR 3D (LOCAL)", color="black"), url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", bgcolor="#00E676", height=60, expand=True)], alignment=ft.MainAxisAlignment.CENTER)
+            ft.Text("Motor Web Worker (Geometría Base)", text_align="center", color="#00E5FF", weight="bold"),
+            ft.ElevatedButton(content=ft.Text("🔄 ABRIR VISOR 3D (ESTÁNDAR)", color="black"), url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", bgcolor="#00E676", height=60, width=float('inf')),
         ], expand=True, scroll="auto")
         
-        # =========================================================
-        # PESTAÑA FILES
-        # =========================================================
+        view_pbr = ft.Column([
+            ft.Container(height=20),
+            ft.Text("🎨 PBR STUDIO (NUEVO)", size=24, color="#FF007F", weight="bold", text_align="center"),
+            ft.Text("Renderizado Físico Realista con Shaders Procedurales.", color="#E6EDF3", text_align="center"),
+            ft.Container(height=20),
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("1️⃣ Ve a la pestaña FILES.", color="#00E676", weight="bold"),
+                    ft.Text("2️⃣ Carga un archivo STL pulsando el botón '▶️'.", color="#00E676"),
+                    ft.Text("3️⃣ Pulsa este botón para abrir el estudio fotográfico:", color="#00E676", weight="bold"),
+                ]), bgcolor="#161B22", padding=15, border_radius=8, border=ft.border.all(1, "#C51162")
+            ),
+            ft.Container(height=20),
+            ft.ElevatedButton(content=ft.Text("🚀 ABRIR PBR STUDIO", color="white", size=16, weight="bold"), url="http://127.0.0.1:" + str(LOCAL_PORT) + "/pbr_studio.html", bgcolor="#C51162", height=80, width=float('inf'))
+        ], expand=True, horizontal_alignment="center")
+
         list_nexus_db = ft.ListView(height=130, spacing=5)
 
         def custom_icon_btn(text, action, tooltip_txt):
@@ -1081,7 +1158,7 @@ def main(page: ft.Page):
                 except: pass
                 shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
                 lbl_stl_status.value = f"✓ Activo: {fn}"; lbl_stl_status.color = "#00E676"
-                select_tool("stl"); set_tab(1); update_code_wrapper(); status.value = "✓ STL Listo en Forge"
+                select_tool("stl"); set_tab(1); update_code_wrapper(); status.value = "✓ STL Listo en Forge y PBR"
             elif ext == "jscad":
                 txt_code.value = open(filepath).read(); set_tab(0); status.value = "✓ Código Cargado"
             page.update()
@@ -1102,14 +1179,11 @@ def main(page: ft.Page):
                 dirs = [d for d in items if os.path.isdir(os.path.join(path, d))]
                 files = [f for f in items if os.path.isfile(os.path.join(path, f))]
                 dirs.sort(); files.sort()
-                
                 if path != "/" and path != "/storage" and path != "/storage/emulated":
                     list_android.controls.append(ft.ListTile(leading=ft.Text("⬆️", size=24), title=ft.Text(".. (Subir nivel)", color="white"), on_click=lambda e: nav_to(os.path.dirname(path))))
-                    
                 for d in dirs:
                     if d.startswith('.'): continue
                     list_android.controls.append(ft.ListTile(leading=ft.Text("📁", size=24), title=ft.Text(d, color="#E6EDF3"), on_click=lambda e, p=os.path.join(path, d): nav_to(p)))
-                    
                 for f in files:
                     ext = f.lower().split('.')[-1] if '.' in f else ''
                     icon = "📄"; color = "#8B949E"
@@ -1169,7 +1243,7 @@ def main(page: ft.Page):
                 LATEST_CODE_B64 = base64.b64encode(js_payload.encode('utf-8')).decode()
                 LATEST_NEEDS_STL = ("IMPORTED_STL" in js_payload) or herramienta_actual.startswith("stl")
             if idx == 3: refresh_nexus_db(); refresh_explorer(current_android_dir)
-            main_container.content = [view_editor, view_constructor, view_visor, view_archivos][idx]
+            main_container.content = [view_editor, view_constructor, view_visor, view_archivos, view_pbr][idx]
             page.update()
 
         nav_bar = ft.Row([
@@ -1177,6 +1251,7 @@ def main(page: ft.Page):
             ft.ElevatedButton(content=ft.Text("🌐 PARAM", color="black"), on_click=lambda _: set_tab(1), bgcolor="#FFAB00"),
             ft.ElevatedButton(content=ft.Text("👁️ 3D", color="black"), on_click=lambda _: set_tab(2), bgcolor="#00E5FF"),
             ft.ElevatedButton(content=ft.Text("📂 FILES", color="white"), on_click=lambda _: set_tab(3), bgcolor="#21262D"),
+            ft.ElevatedButton(content=ft.Text("🎨 PBR", color="white"), on_click=lambda _: set_tab(4), bgcolor="#C51162"),
         ], scroll="auto")
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
