@@ -341,7 +341,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
-        # Soporta save_export (v20.12 nativo) o save_model indistintamente
         if parsed.path in ['/api/save_export', '/api/save_model']:
             cl = int(self.headers.get('Content-Length', 0))
             if cl > 0:
@@ -419,7 +418,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     if os.path.getsize(filepath) >= 84:
                         with open(filepath, "rb") as f: data_to_send = f.read()
                 except: pass
-            # Uso de application/sla (Como en v20.12)
             self.send_response(200); self.send_header("Content-type", "application/sla"); self.send_header("Content-Length", str(len(data_to_send))); self.send_header("Cache-Control", "no-cache"); self._send_cors(); self.end_headers()
             try:
                 self.wfile.write(data_to_send)
@@ -441,7 +439,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             else: self.send_response(404); self._send_cors(); self.end_headers()
             
         elif parsed.path == '/' or parsed.path == '/openscad_engine.html':
-            # CARGA PURA EXACTAMENTE COMO EN V20.12 TITAN (SIN HACKS QUE BLOQUEAN DESCARGAS)
             try:
                 fn = "openscad_engine.html"
                 with open(os.path.join(ASSETS_DIR, fn), "rb") as f:
@@ -469,12 +466,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.60 QUANTUM"
+        page.title = "NEXUS CAD v20.61 QUANTUM FIX"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.60 QUANTUM | Export Native Fix & Ensamble Estático", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.61 QUANTUM | Export Native Fix & Ensamble Estático", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1110,7 +1107,8 @@ def main(page: ft.Page):
                         check_empty_assembly()
                     return handler
                     
-                btn_del = ft.IconButton(ft.icons.DELETE, icon_color="red", on_click=make_delete_handler(i, card))
+                # FIX CRÍTICO: Usamos el string "delete" para evitar el error de ft.icons.DELETE en versiones Flet antiguas en Android
+                btn_del = ft.IconButton(icon="delete", icon_color="red", on_click=make_delete_handler(i, card))
                 
                 card.content = ft.Column([
                     ft.Row([df, dm, btn_del], alignment="spaceBetween"),
