@@ -245,7 +245,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "X-Requested-With, Content-Type, File-Name")
-        self.send_header("Connection", "close") # Previene cuelgues ProgressEvent en WebView
+        self.send_header("Connection", "close") 
 
     def do_OPTIONS(self):
         self.send_response(200); self._send_cors(); self.end_headers()
@@ -297,20 +297,29 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             
             if os.path.exists(filepath):
                 try:
-                    with open(filepath, "rb") as f:
-                        data_to_send = f.read()
+                    sz = os.path.getsize(filepath)
+                    if sz >= 84:
+                        with open(filepath, "rb") as f:
+                            data_to_send = f.read()
                 except Exception:
                     pass
             
             self.send_response(200)
-            self.send_header("Content-type", "application/octet-stream")
+            self.send_header("Content-type", "model/stl")
             self.send_header("Content-Length", str(len(data_to_send)))
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
             self._send_cors()
             self.end_headers()
-            self.wfile.write(data_to_send)
+            
+            # Streaming en bloques de 64KB para evitar cuelgues del Socket WebView
+            try:
+                chunk_size = 65536
+                for i in range(0, len(data_to_send), chunk_size):
+                    self.wfile.write(data_to_send[i:i+chunk_size])
+            except Exception as e:
+                pass
 
         elif parsed.path == '/pbr_studio.html':
             self.send_response(200); self.send_header("Content-type", "text/html"); self.send_header("Content-Length", str(len(PBR_HTML_TEMPLATE.encode('utf-8')))); self._send_cors(); self.end_headers(); self.wfile.write(PBR_HTML_TEMPLATE.encode('utf-8'))
@@ -330,17 +339,64 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
         elif parsed.path == '/' or parsed.path == '/openscad_engine.html':
             try:
                 fn = "openscad_engine.html"
-                with open(os.path.join(ASSETS_DIR, fn), "rb") as f:
-                    content = f.read().decode('utf-8')
+                with open(os.path.join(ASSETS_DIR, fn), "r", encoding="utf-8") as f:
+                    content = f.read()
                 
-                # Inyección de URL Absoluta segura
-                host = self.headers.get('Host', f'127.0.0.1:{LOCAL_PORT}')
-                abs_url = f"http://{host}/imported.stl"
+                # Leemos el STL para inyectarlo como Base64 en la RAM del navegador
+                stl_path = os.path.join(EXPORT_DIR, "imported.stl")
+                b64_stl = base64.b64encode(DUMMY_VALID_STL).decode('utf-8')
                 
-                content = content.replace("'/imported.stl", f"'{abs_url}")
-                content = content.replace('"/imported.stl', f'"{abs_url}')
-                content = content.replace("`/imported.stl", f"`{abs_url}")
+                if os.path.exists(stl_path):
+                    sz = os.path.getsize(stl_path)
+                    if sz >= 84:
+                        with open(stl_path, "rb") as stl_file:
+                            b64_stl = base64.b64encode(stl_file.read()).decode('utf-8')
                 
+                # INTERCEPTOR PROFUNDO PARA WEB WORKERS
+                # Este script secuestra window.Worker y XMLHttpRequest para que jamás
+                # pidan el archivo STL a la red, sirviéndolo instantáneamente desde la RAM.
+                injector = f'''
+                <script>
+                (function() {{
+                    var stlData = "data:application/octet-stream;base64,{b64_stl}";
+                    
+                    // 1. Interceptar Hilo Principal
+                    var origOpen = XMLHttpRequest.prototype.open;
+                    XMLHttpRequest.prototype.open = function(method, url) {{
+                        if (url && typeof url === "string" && url.indexOf("imported.stl") !== -1) {{
+                            arguments[1] = stlData;
+                        }}
+                        return origOpen.apply(this, arguments);
+                    }};
+                    if(window.fetch) {{
+                        var origFetch = window.fetch;
+                        window.fetch = function(resource, config) {{
+                            if (resource && typeof resource === "string" && resource.indexOf("imported.stl") !== -1) {{
+                                resource = stlData;
+                            }}
+                            return origFetch.call(this, resource, config);
+                        }};
+                    }}
+                    
+                    // 2. Interceptar Hilos Secundarios (Web Workers)
+                    if(window.Worker) {{
+                        var origWorker = window.Worker;
+                        window.Worker = function(scriptURL, options) {{
+                            var absUrl = new URL(scriptURL, location.href).href;
+                            var code = "var stlData = '" + stlData + "'; var origOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(m, u) { if (u && typeof u === 'string' && u.indexOf('imported.stl') !== -1) { arguments[1] = stlData; } return origOpen.apply(this, arguments); }; if(self.fetch) { var origFetch = self.fetch; self.fetch = function(r, c) { if (r && typeof r === 'string' && r.indexOf('imported.stl') !== -1) { r = stlData; } return origFetch.call(this, r, c); }; } importScripts('" + absUrl + "');";
+                            var blob = new Blob([code], {{ type: "application/javascript" }});
+                            return new origWorker(URL.createObjectURL(blob), options);
+                        }};
+                    }}
+                }})();
+                </script>
+                '''
+                
+                if "<head>" in content:
+                    content = content.replace("<head>", "<head>" + injector)
+                else:
+                    content = injector + content
+                    
                 encoded_content = content.encode('utf-8')
                 self.send_response(200)
                 self.send_header("Content-type", "text/html")
@@ -350,7 +406,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 self.wfile.write(encoded_content)
                 return
             except Exception as e:
-                self.send_response(404); self._send_cors(); self.end_headers(); self.wfile.write(str(e).encode())
+                self.send_response(500); self._send_cors(); self.end_headers(); self.wfile.write(str(e).encode())
 
         else:
             try:
@@ -361,7 +417,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             
     def log_message(self, *args): pass
 
-# Servidor HTTP Multi-hilo para evitar cuelgues de WebView
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
     allow_reuse_address = True
@@ -373,12 +428,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.24 PBR TITAN"
+        page.title = "NEXUS CAD v20.25 PBR TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.24 TITAN | Threaded Server & STL Shield", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.25 TITAN | Worker XHR Interceptor Activo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1209,7 +1264,6 @@ def main(page: ft.Page):
         def load_file(filepath):
             fn = os.path.basename(filepath); ext = fn.lower().split('.')[-1]
             if ext == "stl":
-                # ESCANER FORENSE DE STL INCORPORADO
                 is_valid, msg = validate_stl(filepath)
                 if not is_valid:
                     status.value = f"❌ {msg}"
@@ -1219,7 +1273,8 @@ def main(page: ft.Page):
                     
                 shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
                 lbl_stl_status.value = f"✓ Activo: {fn}"; lbl_stl_status.color = "#00E676"
-                select_tool("stl"); set_tab(1); update_code_wrapper(); status.value = f"✓ STL Cargado ({msg})"
+                select_tool("stl"); set_tab(1); update_code_wrapper()
+                status.value = f"✓ STL Inyectado en Memoria (Bypass Activado)"
             elif ext == "jscad":
                 txt_code.value = open(filepath).read(); set_tab(0); status.value = "✓ Código Cargado"
             page.update()
