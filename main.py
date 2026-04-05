@@ -1,5 +1,5 @@
 import flet as ft
-import os, base64, json, threading, http.server, socketserver, socket, time, warnings, traceback, shutil
+import os, base64, json, threading, http.server, socketserver, socket, time, warnings, traceback, shutil, struct
 
 try:
     import psutil
@@ -102,6 +102,53 @@ def validate_stl(filepath):
     except Exception as e:
         return False, f"Error lectura: {e}"
 
+# =========================================================
+# ANALIZADOR MATEMÁTICO 3D (BOUNDING BOX & VOLUMEN)
+# =========================================================
+def analyze_stl(filepath):
+    try:
+        with open(filepath, 'rb') as f:
+            header = f.read(80)
+            if b'solid ' in header[:10]:
+                return None # ASCII no soportado por el analizador ultrarrápido
+            
+            tri_count = int.from_bytes(f.read(4), byteorder='little')
+            
+            min_x = min_y = min_z = float('inf')
+            max_x = max_y = max_z = float('-inf')
+            volume = 0.0
+
+            for _ in range(tri_count):
+                data = f.read(50)
+                if len(data) < 50: break
+                
+                v1 = struct.unpack('<3f', data[12:24])
+                v2 = struct.unpack('<3f', data[24:36])
+                v3 = struct.unpack('<3f', data[36:48])
+                
+                for v in (v1, v2, v3):
+                    if v[0] < min_x: min_x = v[0]
+                    if v[0] > max_x: max_x = v[0]
+                    if v[1] < min_y: min_y = v[1]
+                    if v[1] > max_y: max_y = v[1]
+                    if v[2] < min_z: min_z = v[2]
+                    if v[2] > max_z: max_z = v[2]
+
+                # Volumen con signo del tetraedro
+                v321 = v3[0]*v2[1]*v1[2]; v231 = v2[0]*v3[1]*v1[2]; v312 = v3[0]*v1[1]*v2[2]
+                v132 = v1[0]*v3[1]*v2[2]; v213 = v2[0]*v1[1]*v3[2]; v123 = v1[0]*v2[1]*v3[2]
+                volume += (1.0/6.0)*(-v321 + v231 + v312 - v132 - v213 + v123)
+
+            vol_cm3 = abs(volume) / 1000.0 # mm3 a cm3
+            weight_pla = vol_cm3 * 1.24 # PLA = ~1.24 g/cm3
+
+            return {
+                "dx": round(max_x - min_x, 2), "dy": round(max_y - min_y, 2), "dz": round(max_z - min_z, 2),
+                "vol_cm3": round(vol_cm3, 2), "weight_g": round(weight_pla, 2)
+            }
+    except Exception:
+        return None
+
 # STL Binario de 1 triángulo (Matemáticamente perfecto para evitar crashes de DataView)
 DUMMY_VALID_STL = b'NEXUS_DUMMY_STL' + (b'\x00' * 65) + (1).to_bytes(4, 'little') + (b'\x00' * 50)
 
@@ -117,7 +164,7 @@ PBR_HTML_TEMPLATE = """<!DOCTYPE html>
     <style>body{margin:0;overflow:hidden;background:#0B0E14;font-family:sans-serif;} canvas{display:block;}</style>
 </head>
 <body>
-    <div style="position:absolute;top:10px;left:10px;background:rgba(22,27,34,0.85);padding:15px;border-radius:10px;border:1px solid #C51162;box-shadow: 0 4px 6px rgba(0,0,0,0.3); backdrop-filter: blur(5px);">
+    <div style="position:absolute;top:10px;left:10px;background:rgba(22,27,34,0.85);padding:15px;border-radius:10px;border:1px solid #C51162;box-shadow: 0 4px 6px rgba(0,0,0,0.3); backdrop-filter: blur(5px); width:200px;">
         <h3 style="margin:0 0 10px 0;color:#FF007F;font-size:16px;">🎨 NEXUS PBR STUDIO</h3>
         <select id="matSelect" style="width:100%;background:#0B0E14;color:#00E5FF;padding:8px;border:1px solid #30363D;border-radius:5px;outline:none;font-weight:bold;margin-bottom:10px;">
             <option value="carbon">Fibra de Carbono Brillo</option>
@@ -127,9 +174,18 @@ PBR_HTML_TEMPLATE = """<!DOCTYPE html>
             <option value="gold">Oro Puro</option>
             <option value="pla">PLA Gris Mate</option>
         </select>
-        <button onclick="loadSTL()" style="width:100%;background:#00E676;color:#000;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">↻ RECARGAR PIEZA</button>
-        <p style="color:#8B949E;font-size:10px;margin:10px 0 0 0;max-width:180px;">Carga un STL desde la pestaña FILES en la app para verlo aquí.</p>
+        
+        <div style="margin-bottom:10px;">
+            <label style="color:#00E676;font-size:12px;font-weight:bold;">💡 Intensidad Luz Ambiental</label>
+            <input type="range" id="lightSlider" min="0.1" max="4.0" step="0.1" value="1.5" style="width:100%;">
+        </div>
+
+        <button onclick="loadSTL()" style="width:100%;background:#00E676;color:#000;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;margin-bottom:10px;">↻ RECARGAR PIEZA</button>
+        <button onclick="takeScreenshot()" style="width:100%;background:#0D47A1;color:#fff;padding:10px;border:none;border-radius:5px;cursor:pointer;font-weight:bold;">📸 TOMAR FOTO (PNG)</button>
+        
+        <div id="toast" style="display:none; margin-top:10px; color:#00E676; font-size:12px; font-weight:bold; text-align:center;">¡Guardado en NEXUS DB!</div>
     </div>
+    
     <script>
         const scene = new THREE.Scene();
         scene.background = new THREE.Color(0x0B0E14);
@@ -137,17 +193,23 @@ PBR_HTML_TEMPLATE = """<!DOCTYPE html>
 
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 1.0);
         scene.add(hemiLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
         dirLight.position.set(50, 100, 50);
         scene.add(dirLight);
         const backLight = new THREE.DirectionalLight(0x00E5FF, 1.0);
         backLight.position.set(-50, 50, -50);
         scene.add(backLight);
 
+        document.getElementById('lightSlider').addEventListener('input', (e) => {
+            dirLight.intensity = parseFloat(e.target.value);
+            hemiLight.intensity = parseFloat(e.target.value) * 0.6;
+        });
+
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 2000);
         camera.position.set(150, 150, 150);
 
-        const renderer = new THREE.WebGLRenderer({antialias: true});
+        // preserveDrawingBuffer es VITAL para poder extraer la imagen del canvas
+        const renderer = new THREE.WebGLRenderer({antialias: true, preserveDrawingBuffer: true});
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.outputEncoding = THREE.sRGBEncoding;
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -155,6 +217,20 @@ PBR_HTML_TEMPLATE = """<!DOCTYPE html>
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+
+        function takeScreenshot() {
+            renderer.render(scene, camera);
+            const dataURL = renderer.domElement.toDataURL("image/png");
+            fetch('/api/save_image', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({filename: 'render_' + Date.now() + '.png', image_data: dataURL})
+            }).then(r => r.json()).then(d => {
+                const t = document.getElementById('toast');
+                t.style.display = 'block';
+                setTimeout(() => t.style.display = 'none', 3000);
+            }).catch(e => console.error(e));
+        }
 
         function createCarbonFiber() {
             const c = document.createElement('canvas'); c.width=64; c.height=64;
@@ -266,6 +342,22 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 except Exception: pass
             self.send_response(500); self._send_cors(); self.end_headers()
             
+        elif parsed.path == '/api/save_image':
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                try:
+                    post_data = self.rfile.read(content_length)
+                    data = json.loads(post_data.decode('utf-8'))
+                    img_data = data['image_data'].split(',')[1]
+                    filepath = os.path.join(EXPORT_DIR, data['filename'])
+                    with open(filepath, 'wb') as f:
+                        f.write(base64.b64decode(img_data))
+                    resp = b'{"status": "ok"}'
+                    self.send_response(200); self.send_header("Content-type", "application/json"); self.send_header("Content-Length", str(len(resp))); self._send_cors(); self.end_headers(); self.wfile.write(resp)
+                    return
+                except Exception: pass
+            self.send_response(500); self._send_cors(); self.end_headers()
+
         elif parsed.path == '/api/upload':
             cl = int(self.headers.get('Content-Length', 0))
             fn = unquote(self.headers.get('File-Name', 'uploaded_file.stl'))
@@ -313,7 +405,7 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             self._send_cors()
             self.end_headers()
             
-            # Streaming en bloques de 64KB para evitar cuelgues del Socket WebView
+            # Streaming en bloques de 64KB
             try:
                 chunk_size = 65536
                 for i in range(0, len(data_to_send), chunk_size):
@@ -342,7 +434,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 with open(os.path.join(ASSETS_DIR, fn), "r", encoding="utf-8") as f:
                     content = f.read()
                 
-                # Leemos el STL para inyectarlo como Base64 en la RAM del navegador
                 stl_path = os.path.join(EXPORT_DIR, "imported.stl")
                 b64_stl = base64.b64encode(DUMMY_VALID_STL).decode('utf-8')
                 
@@ -352,13 +443,10 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                         with open(stl_path, "rb") as stl_file:
                             b64_stl = base64.b64encode(stl_file.read()).decode('utf-8')
                 
-                # INTERCEPTOR PROFUNDO PARA WEB WORKERS (Sin f-strings para evitar SyntaxError)
                 injector = '''
                 <script>
                 (function() {
                     var stlData = "data:application/octet-stream;base64,__B64_STL__";
-                    
-                    // 1. Interceptar Hilo Principal
                     var origOpen = XMLHttpRequest.prototype.open;
                     XMLHttpRequest.prototype.open = function(method, url) {
                         if (url && typeof url === "string" && url.indexOf("imported.stl") !== -1) {
@@ -375,8 +463,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                             return origFetch.call(this, resource, config);
                         };
                     }
-                    
-                    // 2. Interceptar Hilos Secundarios (Web Workers)
                     if(window.Worker) {
                         var origWorker = window.Worker;
                         window.Worker = function(scriptURL, options) {
@@ -426,12 +512,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.26 PBR TITAN"
+        page.title = "NEXUS CAD v20.27 MASTER"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.26 TITAN | Worker XHR Interceptor Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.27 MASTER | Calibre 3D + PBR Pro", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1221,19 +1307,39 @@ def main(page: ft.Page):
         
         view_pbr = ft.Column([
             ft.Container(height=20),
-            ft.Text("🎨 PBR STUDIO (NUEVO)", size=24, color="#FF007F", weight="bold", text_align="center"),
+            ft.Text("🎨 PBR STUDIO PRO", size=24, color="#FF007F", weight="bold", text_align="center"),
             ft.Text("Renderizado Físico Realista con Shaders Procedurales.", color="#E6EDF3", text_align="center"),
             ft.Container(height=20),
             ft.Container(
                 content=ft.Column([
-                    ft.Text("1️⃣ Ve a la pestaña FILES.", color="#00E676", weight="bold"),
-                    ft.Text("2️⃣ Carga un archivo STL pulsando el botón '▶️'.", color="#00E676"),
-                    ft.Text("3️⃣ Pulsa este botón para abrir el estudio fotográfico:", color="#00E676", weight="bold"),
+                    ft.Text("1️⃣ Ve a la pestaña FILES y carga un archivo STL.", color="#00E676", weight="bold"),
+                    ft.Text("2️⃣ Abre el estudio para ajustar luces y materiales.", color="#00E676"),
+                    ft.Text("3️⃣ Pulsa el nuevo botón 'TOMAR FOTO' en el visor web para generar un PNG con fondo transparente.", color="#00E676", weight="bold"),
                 ]), bgcolor="#161B22", padding=15, border_radius=8, border=ft.border.all(1, "#C51162")
             ),
             ft.Container(height=20),
             ft.ElevatedButton(content=ft.Text("🚀 ABRIR PBR STUDIO", color="white", size=16, weight="bold"), url="http://127.0.0.1:" + str(LOCAL_PORT) + "/pbr_studio.html", bgcolor="#C51162", height=80, width=float('inf'))
         ], expand=True, horizontal_alignment="center")
+
+        # PANEL CALIBRE 3D
+        txt_dim_x = ft.Text("0.0 mm", color="#00E5FF", weight="bold")
+        txt_dim_y = ft.Text("0.0 mm", color="#00E5FF", weight="bold")
+        txt_dim_z = ft.Text("0.0 mm", color="#00E5FF", weight="bold")
+        txt_vol = ft.Text("0.0 cm³", color="#FFAB00", weight="bold")
+        txt_peso = ft.Text("0.0 g", color="#00E676", weight="bold")
+
+        panel_calibre = ft.Container(
+            content=ft.Column([
+                ft.Text("📐 CALIBRE 3D Y PRESUPUESTO (STL ACTUAL)", color="#E6EDF3", weight="bold"),
+                ft.Row([ft.Text("Ancho (X):", color="#8B949E", width=80), txt_dim_x]),
+                ft.Row([ft.Text("Largo (Y):", color="#8B949E", width=80), txt_dim_y]),
+                ft.Row([ft.Text("Alto (Z):", color="#8B949E", width=80), txt_dim_z]),
+                ft.Divider(color="#30363D"),
+                ft.Row([ft.Text("Volumen:", color="#8B949E", width=80), txt_vol]),
+                ft.Row([ft.Text("Peso PLA:", color="#8B949E", width=80), txt_peso])
+            ]),
+            bgcolor="#161B22", padding=15, border_radius=8, border=ft.border.all(1, "#2962FF")
+        )
 
         list_nexus_db = ft.ListView(height=130, spacing=5)
 
@@ -1247,14 +1353,21 @@ def main(page: ft.Page):
                 if not files: list_nexus_db.controls.append(ft.Text("Vacío. Inyecta un archivo.", color="#8B949E", italic=True))
                 for f in files:
                     ext = f.lower().split('.')[-1]; p = os.path.join(EXPORT_DIR, f)
+                    icon = "🧊" if ext=="stl" else ("🖼️" if ext=="png" else "🧩")
+                    color = "#00E676" if ext=="stl" else ("#C51162" if ext=="png" else "white")
+                    
+                    actions = [
+                        custom_icon_btn("⬇️", lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), "Bajar"),
+                        custom_icon_btn("🗑️", lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], "Borrar")
+                    ]
+                    if ext in ["stl", "jscad"]:
+                        actions.insert(0, custom_icon_btn("▶️", lambda e, fp=p: load_file(fp), "Cargar"))
+
                     list_nexus_db.controls.append(
                         ft.Container(content=ft.Row([
-                            ft.Text("🧊" if ext=="stl" else "🧩", size=20),
-                            ft.Text(f, color="white", weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS),
-                            custom_icon_btn("▶️", lambda e, fp=p: load_file(fp), "Cargar"),
-                            custom_icon_btn("⬇️", lambda e, fn=f: page.launch_url(f"http://127.0.0.1:{LOCAL_PORT}/descargar/{fn}"), "Bajar"),
-                            custom_icon_btn("🗑️", lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], "Borrar")
-                        ]), bgcolor="#21262D", padding=5, border_radius=5)
+                            ft.Text(icon, size=20),
+                            ft.Text(f, color=color, weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)
+                        ] + actions), bgcolor="#21262D", padding=5, border_radius=5)
                     )
             except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
             page.update()
@@ -1268,7 +1381,16 @@ def main(page: ft.Page):
                     status.color = "#FF5252"
                     page.update()
                     return
-                    
+                
+                # Ejecutar Calibre 3D Matemático
+                metrics = analyze_stl(filepath)
+                if metrics:
+                    txt_dim_x.value = f"{metrics['dx']} mm"
+                    txt_dim_y.value = f"{metrics['dy']} mm"
+                    txt_dim_z.value = f"{metrics['dz']} mm"
+                    txt_vol.value = f"{metrics['vol_cm3']} cm³"
+                    txt_peso.value = f"{metrics['weight_g']} g"
+
                 shutil.copy(filepath, os.path.join(EXPORT_DIR, "imported.stl"))
                 lbl_stl_status.value = f"✓ Activo: {fn}"; lbl_stl_status.color = "#00E676"
                 select_tool("stl"); set_tab(1); update_code_wrapper()
@@ -1303,6 +1425,7 @@ def main(page: ft.Page):
                     icon = "📄"; color = "#8B949E"
                     if ext == "stl": icon = "🧊"; color = "#00E676"
                     elif ext == "jscad": icon = "🧩"; color = "#00E5FF"
+                    elif ext == "png": icon = "🖼️"; color = "#C51162"
                     list_android.controls.append(ft.ListTile(leading=ft.Text(icon, size=24), title=ft.Text(f, color=color), subtitle=ft.Text(f"{os.path.getsize(os.path.join(path, f)) // 1024} KB", size=10), on_click=lambda e, p=os.path.join(path, f): file_action(p)))
             except PermissionError: list_android.controls.append(ft.Text("❌ Permiso Denegado.", color="red", weight="bold"))
             except Exception as ex: list_android.controls.append(ft.Text(f"Error: {ex}", color="red"))
@@ -1331,10 +1454,12 @@ def main(page: ft.Page):
         ], scroll="auto")
 
         view_archivos = ft.Column([
+            panel_calibre,
+            ft.Container(height=5),
             ft.Container(content=ft.Column([
                 ft.Text("🌐 INYECCIÓN WEB & NEXUS DB", color="#00E676", weight="bold"),
-                ft.ElevatedButton(content=ft.Text("🚀 INYECTAR ARCHIVO (VÍA NAVEGADOR PC)", color="black"), url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", width=float('inf')),
-                ft.Row([ft.Text("Archivos listos en memoria:", color="#E6EDF3", size=11), ft.ElevatedButton(content=ft.Text("🔄", color="#00E5FF"), on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", width=50)], alignment="spaceBetween"),
+                ft.ElevatedButton(content=ft.Text("🚀 INYECTAR ARCHIVO (VÍA PC)", color="black"), url=f"http://127.0.0.1:{LOCAL_PORT}/upload_ui", bgcolor="#00E676", width=float('inf')),
+                ft.Row([ft.Text("Archivos y Renders listos:", color="#E6EDF3", size=11), ft.ElevatedButton(content=ft.Text("🔄", color="#00E5FF"), on_click=lambda _: refresh_nexus_db(), bgcolor="#1E1E1E", width=50)], alignment="spaceBetween"),
                 ft.Container(content=list_nexus_db, height=130, bgcolor="#0B0E14", border_radius=5, padding=5)
             ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676")),
             ft.Container(height=5),
