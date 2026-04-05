@@ -352,45 +352,43 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                         with open(stl_path, "rb") as stl_file:
                             b64_stl = base64.b64encode(stl_file.read()).decode('utf-8')
                 
-                # INTERCEPTOR PROFUNDO PARA WEB WORKERS
-                # Este script secuestra window.Worker y XMLHttpRequest para que jamás
-                # pidan el archivo STL a la red, sirviéndolo instantáneamente desde la RAM.
-                injector = f'''
+                # INTERCEPTOR PROFUNDO PARA WEB WORKERS (Sin f-strings para evitar SyntaxError)
+                injector = '''
                 <script>
-                (function() {{
-                    var stlData = "data:application/octet-stream;base64,{b64_stl}";
+                (function() {
+                    var stlData = "data:application/octet-stream;base64,__B64_STL__";
                     
                     // 1. Interceptar Hilo Principal
                     var origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url) {{
-                        if (url && typeof url === "string" && url.indexOf("imported.stl") !== -1) {{
+                    XMLHttpRequest.prototype.open = function(method, url) {
+                        if (url && typeof url === "string" && url.indexOf("imported.stl") !== -1) {
                             arguments[1] = stlData;
-                        }}
+                        }
                         return origOpen.apply(this, arguments);
-                    }};
-                    if(window.fetch) {{
+                    };
+                    if(window.fetch) {
                         var origFetch = window.fetch;
-                        window.fetch = function(resource, config) {{
-                            if (resource && typeof resource === "string" && resource.indexOf("imported.stl") !== -1) {{
+                        window.fetch = function(resource, config) {
+                            if (resource && typeof resource === "string" && resource.indexOf("imported.stl") !== -1) {
                                 resource = stlData;
-                            }}
+                            }
                             return origFetch.call(this, resource, config);
-                        }};
-                    }}
+                        };
+                    }
                     
                     // 2. Interceptar Hilos Secundarios (Web Workers)
-                    if(window.Worker) {{
+                    if(window.Worker) {
                         var origWorker = window.Worker;
-                        window.Worker = function(scriptURL, options) {{
+                        window.Worker = function(scriptURL, options) {
                             var absUrl = new URL(scriptURL, location.href).href;
                             var code = "var stlData = '" + stlData + "'; var origOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(m, u) { if (u && typeof u === 'string' && u.indexOf('imported.stl') !== -1) { arguments[1] = stlData; } return origOpen.apply(this, arguments); }; if(self.fetch) { var origFetch = self.fetch; self.fetch = function(r, c) { if (r && typeof r === 'string' && r.indexOf('imported.stl') !== -1) { r = stlData; } return origFetch.call(this, r, c); }; } importScripts('" + absUrl + "');";
-                            var blob = new Blob([code], {{ type: "application/javascript" }});
+                            var blob = new Blob([code], { type: "application/javascript" });
                             return new origWorker(URL.createObjectURL(blob), options);
-                        }};
-                    }}
-                }})();
+                        };
+                    }
+                })();
                 </script>
-                '''
+                '''.replace("__B64_STL__", b64_stl)
                 
                 if "<head>" in content:
                     content = content.replace("<head>", "<head>" + injector)
@@ -428,12 +426,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.25 PBR TITAN"
+        page.title = "NEXUS CAD v20.26 PBR TITAN"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.25 TITAN | Worker XHR Interceptor Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.26 TITAN | Worker XHR Interceptor Activo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
