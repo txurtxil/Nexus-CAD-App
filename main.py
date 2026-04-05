@@ -477,12 +477,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.66 TITAN FORGE"
+        page.title = "NEXUS CAD v20.67 TITAN FORGE"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.66 TITAN | Web Worker Bypass Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.67 TITAN | Web Worker Bypass Activo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -1438,7 +1438,7 @@ def main(page: ft.Page):
             threading.Thread(target=think, daemon=True).start()
 
         ia_input.on_submit = send_ia
-        btn_send_ia = ft.IconButton(icon=ft.icons.SEND, icon_color="#00E676", on_click=send_ia)
+        btn_send_ia = ft.IconButton(icon="send", icon_color="#00E676", on_click=send_ia)
 
         view_ia = ft.Column([
             ft.Row([ft.Text("🤖 NEXUS AI ASSISTANT", size=20, color="#B388FF", weight="bold")], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
