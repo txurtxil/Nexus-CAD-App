@@ -39,11 +39,8 @@ LOCAL_PORT = 8556
 LATEST_CODE_B64 = ""
 LATEST_NEEDS_STL = False
 
-ASSEMBLY_PARTS = [] # Global robusta para las piezas
-PBR_STATE = {
-    "mode": "single",
-    "parts": []
-}
+ASSEMBLY_PARTS = [] 
+PBR_STATE = {"mode": "single", "parts": []}
 
 def get_sys_info():
     cores = os.cpu_count() or 1
@@ -91,6 +88,26 @@ def validate_stl(filepath):
             if sz == expected: return True, "Binario STL Válido"
             return False, f"STL Incompleto/Roto: Pesa {sz}B, Motor exige {expected}B."
     except Exception as e: return False, f"Error lectura: {e}"
+
+def convert_stl_to_obj(stl_path, obj_path):
+    try:
+        with open(stl_path, 'rb') as f:
+            f.read(80)
+            tris = int.from_bytes(f.read(4), 'little')
+            with open(obj_path, 'w') as out:
+                out.write("# NEXUS CAD Export\no Nexus_Mesh\n")
+                v_idx = 1
+                for _ in range(tris):
+                    data = f.read(50)
+                    if len(data) < 50: break
+                    v1 = struct.unpack('<3f', data[12:24])
+                    v2 = struct.unpack('<3f', data[24:36])
+                    v3 = struct.unpack('<3f', data[36:48])
+                    out.write(f"v {v1[0]} {v1[1]} {v1[2]}\nv {v2[0]} {v2[1]} {v2[2]}\nv {v3[0]} {v3[1]} {v3[2]}\nf {v_idx} {v_idx+1} {v_idx+2}\n")
+                    v_idx += 3
+        return True, "Convertido y guardado exitosamente."
+    except Exception as e:
+        return False, str(e)
 
 def analyze_stl(filepath):
     try:
@@ -368,9 +385,9 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     if os.path.getsize(filepath) >= 84:
                         with open(filepath, "rb") as f: data_to_send = f.read()
                 except: pass
-            self.send_response(200); self.send_header("Content-type", "model/stl"); self.send_header("Content-Length", str(len(data_to_send))); self.send_header("Cache-Control", "no-cache"); self._send_cors(); self.end_headers()
+            self.send_response(200); self.send_header("Content-type", "application/octet-stream"); self.send_header("Content-Length", str(len(data_to_send))); self.send_header("Cache-Control", "no-cache"); self._send_cors(); self.end_headers()
             try:
-                for i in range(0, len(data_to_send), 65536): self.wfile.write(data_to_send[i:i+65536])
+                self.wfile.write(data_to_send)
             except: pass
 
         elif parsed.path == '/pbr_studio.html':
@@ -392,20 +409,22 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             try:
                 fn = "openscad_engine.html"
                 with open(os.path.join(ASSETS_DIR, fn), "r", encoding="utf-8") as f: content = f.read()
-                stl_path = os.path.join(EXPORT_DIR, "imported.stl")
-                b64_stl = base64.b64encode(DUMMY_VALID_STL).decode('utf-8')
-                if os.path.exists(stl_path) and os.path.getsize(stl_path) >= 84:
-                    with open(stl_path, "rb") as stl_file: b64_stl = base64.b64encode(stl_file.read()).decode('utf-8')
                 
+                # INYECTOR SEGURO: Evitamos volcar 8MB en Base64 en el HTML. Usamos fetch directo para evitar cuelgues del Worker (ProgressEvent fix).
                 injector = '''<script>
-                (function() {
-                    var stlData = "data:application/octet-stream;base64,__B64_STL__";
-                    var origOpen = XMLHttpRequest.prototype.open;
-                    XMLHttpRequest.prototype.open = function(method, url) { if (url && typeof url === "string" && url.indexOf("imported.stl") !== -1) { arguments[1] = stlData; } return origOpen.apply(this, arguments); };
-                    if(window.fetch) { var origFetch = window.fetch; window.fetch = function(resource, config) { if (resource && typeof resource === "string" && resource.indexOf("imported.stl") !== -1) { resource = stlData; } return origFetch.call(this, resource, config); }; }
-                    if(window.Worker) { var origWorker = window.Worker; window.Worker = function(scriptURL, options) { var absUrl = new URL(scriptURL, location.href).href; var code = "var stlData = '" + stlData + "'; var origOpen = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function(m, u) { if (u && typeof u === 'string' && u.indexOf('imported.stl') !== -1) { arguments[1] = stlData; } return origOpen.apply(this, arguments); }; if(self.fetch) { var origFetch = self.fetch; self.fetch = function(r, c) { if (r && typeof r === 'string' && r.indexOf('imported.stl') !== -1) { r = stlData; } return origFetch.call(this, r, c); }; } importScripts('" + absUrl + "');"; var blob = new Blob([code], { type: "application/javascript" }); return new origWorker(URL.createObjectURL(blob), options); }; }
-                })();
-                </script>'''.replace("__B64_STL__", b64_stl)
+                var _origFetch = window.fetch;
+                window.fetch = function() {
+                    if (arguments[0] && typeof arguments[0] === "string" && arguments[0].includes("imported.stl")) {
+                        arguments[0] = "/imported.stl?t=" + Date.now();
+                    }
+                    return _origFetch.apply(this, arguments);
+                };
+                var _origXHR = window.XMLHttpRequest.prototype.open;
+                window.XMLHttpRequest.prototype.open = function(method, url) {
+                    if(url && typeof url === "string" && url.includes("imported.stl")) { arguments[1] = "/imported.stl?t=" + Date.now(); }
+                    return _origXHR.apply(this, arguments);
+                };
+                </script>'''
                 
                 if "<head>" in content: content = content.replace("<head>", "<head>" + injector)
                 else: content = injector + content
@@ -434,12 +453,12 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.30 TITAN POLISH"
+        page.title = "NEXUS CAD v20.31 TITAN ULTIMATE"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.30 | Ensamble Seguro & Asistente IA Mejorado", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.31 | Función 5 Habilitada (Exportar OBJ) + Estabilidad Fix", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
@@ -470,7 +489,17 @@ def main(page: ft.Page):
         def prepare_js_payload():
             c_val = {"PLA Gris Mate": "[0.5, 0.5, 0.5, 1.0]", "PETG Transparente": "[0.8, 0.9, 0.9, 0.45]", "Fibra de Carbono": "[0.15, 0.15, 0.15, 1.0]", "Aluminio Mecanizado": "[0.7, 0.75, 0.8, 1.0]", "Madera Bambú": "[0.6, 0.4, 0.2, 1.0]", "Oro Puro": "[0.9, 0.75, 0.1, 1.0]", "Neón Cyan": "[0.0, 1.0, 1.0, 0.8]"}.get(dd_mat.value, "[0.5, 0.5, 0.5, 1.0]")
             header = f"  var GW = {sl_g_w.value}; var GL = {sl_g_l.value}; var GH = {sl_g_h.value}; var GT = {sl_g_t.value}; var G_TOL = {sl_g_tol.value}; var KINE_T = {sl_kine.value}; var MAT_C = {c_val};\n"
-            utils_block = "  if(typeof CSG !== 'undefined' && typeof CSG.Matrix4x4 === 'undefined' && typeof Matrix4x4 !== 'undefined') { CSG.Matrix4x4 = Matrix4x4; }\n  var UTILS = { trans: function(o, v) { if(!o) return o; var r; try { r = o.translate(v); } catch(e) { try { if(typeof translate !== 'undefined') r = translate(v, o); } catch(e2) {} } return r ? r : o; }, scale: function(o, v) { if(!o) return o; var r; try { r = o.scale(v); } catch(e) { try { if(typeof scale !== 'undefined') r = scale(v, o); } catch(e2) {} } return r ? r : o; }, rotZ: function(o, d) { if(!o) return o; var r; try { r = o.rotateZ(d); } catch(e) { try { if(typeof rotate !== 'undefined') r = rotate([0,0,d], o); else r = o.rotate([0,0,0],[0,0,1],d); } catch(e2) {} } return r ? r : o; }, rotX: function(o, d) { if(!o) return o; var r; try { r = o.rotateX(d); } catch(e) { try { if(typeof rotate !== 'undefined') r = rotate([d,0,0], o); else r = o.rotate([0,0,0],[1,0,0],d); } catch(e2) {} } return r ? r : o; }, rotY: function(o, d) { if(!o) return o; var r; try { r = o.rotateY(d); } catch(e) { try { if(typeof rotate !== 'undefined') r = rotate([0,d,0], o); else r = o.rotate([0,0,0],[0,1,0],d); } catch(e2) {} } return r ? r : o; }, mat: function(o) { if(!o) return CSG.cube({radius:[0.01,0.01,0.01]}); try { if(typeof o.setColor === 'function') return o.setColor(MAT_C); } catch(e) {} return o; } };\n"
+            
+            # CORRECCIÓN FATAL WORKER (Arrays handling para evitar el Cannot read properties of undefined):
+            utils_block = """  if(typeof CSG !== 'undefined' && typeof CSG.Matrix4x4 === 'undefined' && typeof Matrix4x4 !== 'undefined') { CSG.Matrix4x4 = Matrix4x4; }
+  var UTILS = { 
+    trans: function(o, v) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.trans(x, v);}); if(typeof o.translate === 'function') return o.translate(v); if(typeof translate !== 'undefined') return translate(v, o); } catch(e) {} return o; },
+    scale: function(o, v) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.scale(x, v);}); if(typeof o.scale === 'function') return o.scale(v); if(typeof scale !== 'undefined') return scale(v, o); } catch(e) {} return o; },
+    rotZ: function(o, d) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.rotZ(x, d);}); if(typeof o.rotateZ === 'function') return o.rotateZ(d); if(typeof rotate !== 'undefined') return rotate([0,0,d], o); } catch(e) {} return o; },
+    rotX: function(o, d) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.rotX(x, d);}); if(typeof o.rotateX === 'function') return o.rotateX(d); if(typeof rotate !== 'undefined') return rotate([d,0,0], o); } catch(e) {} return o; },
+    rotY: function(o, d) { if(!o) return o; try { if(Array.isArray(o)) return o.map(function(x){return UTILS.rotY(x, d);}); if(typeof o.rotateY === 'function') return o.rotateY(d); if(typeof rotate !== 'undefined') return rotate([0,d,0], o); } catch(e) {} return o; },
+    mat: function(o) { if(!o) return CSG.cube({radius:[0.01,0.01,0.01]}); try { if(Array.isArray(o)) return o.map(function(x){return UTILS.mat(x);}); if(typeof o.setColor === 'function') return o.setColor(MAT_C); } catch(e) {} return o; } 
+  };\n"""
             header += utils_block
             param_def = "function getParameterDefinitions() { return [{name: 'KINE_T', type: 'slider', initial: 0, min: 0, max: 360, step: 1, caption: 'Cinemática (º)'}]; }\n"
             c = txt_code.value
@@ -1019,14 +1048,14 @@ def main(page: ft.Page):
 
         view_visor = ft.Column([
             ft.Container(height=5), hw_panel, ft.Container(height=5),
-            ft.Container(content=ft.Column([ft.Text("🥽 MODO GAFAS VR O PC EXTERNO", color="#B388FF", weight="bold", size=11), ft.TextField(value=f"http://{LAN_IP}:{LOCAL_PORT}/", read_only=True, text_size=16, text_align="center", bgcolor="#161B22", color="#00E676")]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#B388FF")),
+            ft.Container(content=ft.Column([ft.Text("🥽 MODO GAFAS VR O PC EXTERNO", color="#B388FF", weight="bold", size=11), ft.TextField(value=f"http://{LAN_IP}:{LOCAL_PORT}/openscad_engine.html", read_only=True, text_size=16, text_align="center", bgcolor="#161B22", color="#00E676")]), bgcolor="#1E1E1E", padding=10, border_radius=8, border=ft.border.all(1, "#B388FF")),
             ft.Container(height=5),
             ft.Text("Motor Web Worker (Geometría Base)", text_align="center", color="#00E5FF", weight="bold"),
-            ft.ElevatedButton("🔄 ABRIR VISOR 3D (ESTÁNDAR)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/", bgcolor="#00E676", color="black", height=60, width=float('inf')),
+            ft.ElevatedButton("🔄 ABRIR VISOR 3D (ESTÁNDAR)", url="http://127.0.0.1:" + str(LOCAL_PORT) + "/openscad_engine.html", bgcolor="#00E676", color="black", height=60, width=float('inf')),
         ], expand=True, scroll="auto")
         
         # =========================================================
-        # TAB 3: ENSAMBLADOR VISUAL PBR (CORREGIDO Y SEGURO)
+        # TAB 3: ENSAMBLADOR VISUAL PBR (SEGURO FLET FIX)
         # =========================================================
         def update_pbr_state():
             global PBR_STATE, ASSEMBLY_PARTS
@@ -1039,40 +1068,38 @@ def main(page: ft.Page):
             files = [f for f in os.listdir(EXPORT_DIR) if f.lower().endswith('.stl') and f != "imported.stl"]
             
             if not files:
-                col_assembly.controls.append(ft.Text("⚠️ DB de STLs vacía.\nVe a la pestaña FILES y sube tus piezas a la Nexus DB primero para poder ensamblar.", color="#FFAB00", weight="bold"))
+                col_assembly.controls.append(ft.Text("⚠️ DB de STLs vacía.\nVe a la pestaña FILES y sube o guarda STLs primero.", color="#FFAB00", weight="bold"))
                 page.update()
                 return
                 
             opts = [ft.dropdown.Option(f) for f in files]
             
-            for p in ASSEMBLY_PARTS:
-                if p["file"] not in files: p["file"] = files[0]
+            for i, part in enumerate(ASSEMBLY_PARTS):
+                if part["file"] not in files: part["file"] = files[0]
                 
-                df = ft.Dropdown(options=opts, value=p["file"], width=160, text_size=12, bgcolor="#0B0E14", color="#00E5FF")
-                dm = ft.Dropdown(options=[ft.dropdown.Option("pla"), ft.dropdown.Option("petg"), ft.dropdown.Option("carbon"), ft.dropdown.Option("aluminum"), ft.dropdown.Option("wood"), ft.dropdown.Option("gold")], value=p.get("mat", "pla"), width=100, text_size=12, bgcolor="#0B0E14")
+                df = ft.Dropdown(options=opts, value=part["file"], width=160, text_size=12, bgcolor="#0B0E14", color="#00E5FF")
+                dm = ft.Dropdown(options=[ft.dropdown.Option("pla"), ft.dropdown.Option("petg"), ft.dropdown.Option("carbon"), ft.dropdown.Option("aluminum"), ft.dropdown.Option("wood"), ft.dropdown.Option("gold")], value=part.get("mat", "pla"), width=100, text_size=12, bgcolor="#0B0E14")
                 
-                # Bindeo robusto usando def anidadas con kwargs explícitos
-                def make_slider(k, l, part=p):
-                    s = ft.Slider(min=-200, max=200, value=part.get(k, 0), expand=True)
-                    def oc(e, key=k, prt=part):
-                        prt[key] = e.control.value
-                        update_pbr_state()
-                    s.on_change = oc
+                # Closures puras para no atrapar variables del bucle y evitar cuelgues de Flet
+                def create_change_handler(p, key):
+                    def handler(e): p[key] = e.control.value; update_pbr_state()
+                    return handler
+
+                def create_delete_handler(p):
+                    def handler(e): ASSEMBLY_PARTS.remove(p); render_assembly_ui(); update_pbr_state()
+                    return handler
+                    
+                df.on_change = create_change_handler(part, "file")
+                dm.on_change = create_change_handler(part, "mat")
+                
+                def sl(k, l, p=part):
+                    s = ft.Slider(min=-200, max=200, value=p.get(k, 0), expand=True)
+                    s.on_change = create_change_handler(p, k)
                     return ft.Row([ft.Text(l, size=10, color="#8B949E", width=15), s])
                 
-                def onf(e, part=p): part["file"] = e.control.value; update_pbr_state()
-                def onm(e, part=p): part["mat"] = e.control.value; update_pbr_state()
-                def ond(e, part_to_remove=p):
-                    if part_to_remove in ASSEMBLY_PARTS:
-                        ASSEMBLY_PARTS.remove(part_to_remove)
-                    render_assembly_ui()
-                    update_pbr_state()
-                    
-                df.on_change = onf; dm.on_change = onm
-                
                 card = ft.Container(content=ft.Column([
-                    ft.Row([df, dm, ft.IconButton(ft.icons.DELETE, icon_color="red", on_click=ond)], alignment="spaceBetween"),
-                    make_slider("x","X"), make_slider("y","Y"), make_slider("z","Z")
+                    ft.Row([df, dm, ft.IconButton(ft.icons.DELETE, icon_color="red", on_click=create_delete_handler(part))], alignment="spaceBetween"),
+                    sl("x","X"), sl("y","Y"), sl("z","Z")
                 ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#C51162"))
                 col_assembly.controls.append(card)
             page.update()
@@ -1130,6 +1157,20 @@ def main(page: ft.Page):
                 status.color = "#FF5252"
             page.update()
 
+        def export_obj_file(e, filename):
+            stl_path = os.path.join(EXPORT_DIR, filename)
+            obj_name = filename.replace('.stl', '.obj')
+            obj_path = os.path.join(DOWNLOAD_DIR, obj_name)
+            os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+            success, msg = convert_stl_to_obj(stl_path, obj_path)
+            if success:
+                status.value = f"✓ Función 5 Completa: {obj_name} guardado en Descargas."
+                status.color = "#00E5FF"
+            else:
+                status.value = f"❌ Error al exportar OBJ: {msg}"
+                status.color = "#FF5252"
+            page.update()
+
         def refresh_nexus_db():
             list_nexus_db.controls.clear()
             try:
@@ -1144,7 +1185,12 @@ def main(page: ft.Page):
                         custom_icon_btn("⬇️", lambda e, fn=f: direct_download_file(e, fn), "Guardar a Download"),
                         custom_icon_btn("🗑️", lambda e, fp=p: [os.remove(fp), refresh_nexus_db()], "Borrar")
                     ]
-                    if ext in ["stl", "jscad"]: actions.insert(0, custom_icon_btn("▶️", lambda e, fp=p: load_file(fp), "Cargar"))
+                    if ext == "stl":
+                        actions.insert(0, custom_icon_btn("📦", lambda e, fn=f: export_obj_file(e, fn), "Exportar OBJ (Descargas)"))
+                        actions.insert(0, custom_icon_btn("▶️", lambda e, fp=p: load_file(fp), "Cargar STL"))
+                    elif ext == "jscad": 
+                        actions.insert(0, custom_icon_btn("▶️", lambda e, fp=p: load_file(fp), "Cargar Código"))
+                        
                     list_nexus_db.controls.append(ft.Container(content=ft.Row([ft.Text(icon, size=20), ft.Text(f, color=color, weight="bold", expand=True, no_wrap=True, overflow=ft.TextOverflow.ELLIPSIS)] + actions), bgcolor="#21262D", padding=5, border_radius=5))
             except Exception as e: list_nexus_db.controls.append(ft.Text(f"Error DB: {e}"))
             page.update()
@@ -1238,9 +1284,10 @@ def main(page: ft.Page):
         ], expand=True, scroll="auto")
 
         # =========================================================
-        # TAB 6: IA INTEGRADA (REDSIEÑADA PARA FLUJO HUMANO)
+        # TAB 6: IA INTEGRADA (CON TEXTFIELD DE FALLBACK SEGURO)
         # =========================================================
         tf_ia_prompt = ft.TextField(label="¿Qué pieza 3D exacta quieres que diseñe?", hint_text="Ej: Una caja de 50x50x20 con un hueco cilíndrico en el centro", multiline=True, bgcolor="#0B0E14", color="white", border_color="#00E5FF")
+        tf_ia_output = ft.TextField(read_only=True, multiline=True, min_lines=4, label="TEXTO GENERADO (Manten pulsado aquí para copiar manualmente)", visible=False, bgcolor="#0B0E14", color="#00E676", border_color="#00E676")
         
         def copy_magic_prompt(e):
             texto_usuario = tf_ia_prompt.value.strip()
@@ -1252,12 +1299,17 @@ def main(page: ft.Page):
             
             prompt_magico = f"Actúa como un experto en programación 3D paramétrica OpenSCAD y JS-CSG. Necesito que escribas el código javascript estricto para crear lo siguiente: '{texto_usuario}'. Usa la librería @jscad/csg. Asegúrate de usar funciones como CSG.cube(), CSG.cylinder(), CSG.sphere(), .union() y .subtract() adecuadamente. OBLIGATORIO: Debes envolver todo el código en 'function main() {{ ... return pieza; }}'. Devuelve SOLO el código dentro de un bloque javascript, no me des explicaciones de texto, solo quiero el código puro para copiar y pegar."
             
-            page.set_clipboard(prompt_magico)
-            status.value = "✓ PROMPT COPIADO AL PORTAPAPELES. ¡Vete al chat de Gemini y pégamelo!"
+            tf_ia_output.value = prompt_magico
+            tf_ia_output.visible = True
+            try:
+                page.set_clipboard(prompt_magico)
+                status.value = "✓ PROMPT COPIADO AL PORTAPAPELES. ¡Vete al chat de Gemini!"
+            except:
+                status.value = "⚠️ Android bloqueó la copia auto. CÓPIALO DEL RECUADRO VERDE DE ABAJO."
             status.color = "#00E676"
             page.update()
 
-        ia_code = ft.TextField(label="Pega aquí el código Javascript que te dio la IA", multiline=True, height=200, bgcolor="#161B22", color="#00E676", text_size=12, border_color="#8E24AA")
+        ia_code = ft.TextField(label="Pega aquí el código Javascript que te dio la IA", multiline=True, height=200, bgcolor="#161B22", color="#8E24AA", text_size=12, border_color="#8E24AA")
         
         def inject_ia_code(e):
             if ia_code.value.strip():
@@ -1276,7 +1328,8 @@ def main(page: ft.Page):
             ft.Container(content=ft.Column([
                 ft.Text("PASO 1: CREAR INSTRUCCIÓN PARA LA IA", color="#00E5FF", weight="bold"),
                 tf_ia_prompt,
-                ft.ElevatedButton("1️⃣ COPIAR PROMPT AL PORTAPAPELES", on_click=copy_magic_prompt, bgcolor="#00E5FF", color="black", width=float('inf'))
+                ft.ElevatedButton("1️⃣ COPIAR PROMPT", on_click=copy_magic_prompt, bgcolor="#00E5FF", color="black", width=float('inf')),
+                tf_ia_output
             ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E5FF")),
             
             ft.Container(height=10),
