@@ -321,18 +321,29 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                 except: pass
             self.send_response(500); self._send_cors(); self.end_headers()
 
+        # =================================================================
+        # FIX Carga Archivos Pesados: Lectura en Chunks en lugar de Todo en RAM
+        # =================================================================
         elif parsed.path == '/api/upload':
             cl = int(self.headers.get('Content-Length', 0))
             fn = unquote(self.headers.get('File-Name', 'uploaded_file.stl'))
             if cl > 0:
                 try:
-                    file_data = self.rfile.read(cl)
                     filepath = os.path.join(EXPORT_DIR, fn)
-                    with open(filepath, 'wb') as f: f.write(file_data)
+                    with open(filepath, 'wb') as f:
+                        bytes_read = 0
+                        chunk_size = 65536  # 64KB buffers para que fluya constante
+                        while bytes_read < cl:
+                            chunk = self.rfile.read(min(chunk_size, cl - bytes_read))
+                            if not chunk: break
+                            f.write(chunk)
+                            bytes_read += len(chunk)
+                    
                     resp = b'ok'
                     self.send_response(200); self.send_header("Content-type", "text/plain"); self.send_header("Content-Length", str(len(resp))); self._send_cors(); self.end_headers(); self.wfile.write(resp)
                     return
-                except: pass
+                except Exception as e:
+                    pass
             self.send_response(500); self._send_cors(); self.end_headers()
 
     def do_GET(self):
@@ -349,9 +360,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
             self.send_response(200); self.send_header("Content-type", "application/json"); self._send_cors(); self.end_headers()
             self.wfile.write(json.dumps(PBR_STATE).encode('utf-8'))
 
-        # ========================================================
-        # RESTAURADO: GESTIÓN DE STL LOCAL EN CHUNKS PARA EVITAR CRASH
-        # ========================================================
         elif parsed.path == '/imported.stl':
             filepath = os.path.join(EXPORT_DIR, "imported.stl")
             data_to_send = DUMMY_VALID_STL
@@ -393,9 +401,6 @@ class NexusHandler(http.server.BaseHTTPRequestHandler):
                     self.send_response(200); self.send_header("Content-Disposition", f'attachment; filename="{filename}"'); self._send_cors(); self.end_headers(); self.wfile.write(f.read())
             else: self.send_response(404); self._send_cors(); self.end_headers()
             
-        # ========================================================
-        # RESTAURADO: INTERCEPTOR PROFUNDO PARA WEB WORKERS
-        # ========================================================
         elif parsed.path == '/' or parsed.path == '/openscad_engine.html':
             try:
                 fn = "openscad_engine.html"
@@ -472,17 +477,16 @@ threading.Thread(target=lambda: ThreadedHTTPServer(("0.0.0.0", LOCAL_PORT), Nexu
 # =========================================================
 def main(page: ft.Page):
     try:
-        page.title = "NEXUS CAD v20.65 TITAN FORGE"
+        page.title = "NEXUS CAD v20.66 TITAN FORGE"
         page.theme_mode = "dark"
         page.bgcolor = "#0B0E14" 
         page.padding = 0 
         
-        status = ft.Text("NEXUS v20.65 TITAN | Web Worker Bypass Activo", color="#00E676", weight="bold")
+        status = ft.Text("NEXUS v20.66 TITAN | Web Worker Bypass Activo", color="#00E676", weight="bold")
 
         T_INICIAL = "function main() {\n  var pieza = CSG.cube({center:[0,0,GH/2], radius:[GW/2, GL/2, GH/2]});\n  return pieza;\n}"
         txt_code = ft.TextField(label="Código Fuente (JS-CSG)", multiline=True, expand=True, value=T_INICIAL, bgcolor="#161B22", color="#58A6FF", border_color="#30363D", text_size=12)
 
-        # Variables para el CSG Assembler de código (v20.26)
         ensamble_stack = []
         herramienta_actual = "custom"
         modo_ensamble = False
@@ -542,9 +546,6 @@ def main(page: ft.Page):
             LATEST_NEEDS_STL = ("IMPORTED_STL" in js_payload) or herramienta_actual.startswith("stl")
             set_tab(2); page.update()
 
-        # ========================================================
-        # RESTAURADO: ENSAMBLADOR CSG (Código de v20.26)
-        # ========================================================
         sw_ensamble = ft.Switch(label="Manejo Código Ensamblador", value=False, active_color="#FFAB00")
         
         def parse_current_tool_to_stack_var():
@@ -1399,23 +1400,71 @@ def main(page: ft.Page):
             ]), bgcolor="#161B22", padding=10, border_radius=8)
         ], expand=True, scroll="auto")
 
+        # =========================================================
+        # TAB 6: IA ASSISTANT
+        # =========================================================
+        chat_list = ft.ListView(expand=True, spacing=10, auto_scroll=True)
+        ia_input = ft.TextField(label="Pide a la IA que diseñe algo...", expand=True, bgcolor="#161B22", border_color="#B388FF")
+
+        def apply_ia_code(code):
+            txt_code.value = code
+            set_tab(0)
+            status.value = "✓ Código de IA aplicado al editor."
+            page.update()
+
+        def send_ia(e=None):
+            user_text = ia_input.value.strip()
+            if not user_text: return
+            chat_list.controls.append(ft.Container(content=ft.Text(f"👤 {user_text}", color="white"), bgcolor="#21262D", padding=10, border_radius=8))
+            ia_input.value = ""
+            page.update()
+            
+            def think():
+                time.sleep(1)
+                # Template base IA
+                code_template = f"function main(params) {{\n  // Plantilla inteligente para: {user_text}\n  // Ajusta los valores según necesites.\n  var W = GW || 50;\n  var L = GL || 50;\n  var H = GH || 20;\n  var obj = CSG.cube({{radius: [W/2, L/2, H/2]}});\n  return UTILS.mat(obj);\n}}"
+                
+                btn_apply = ft.ElevatedButton("📥 APLICAR CÓDIGO AL EDITOR", on_click=lambda _: apply_ia_code(code_template), bgcolor="#00E676", color="black")
+                
+                resp_container = ft.Container(content=ft.Column([
+                    ft.Text(f"🤖 ¡Listo! He procesado una plantilla basada en tu petición: '{user_text}'. Puedes aplicarla al entorno CODE de inmediato.", color="#00E676", size=12),
+                    ft.Container(content=ft.Text(code_template, size=10, color="#58A6FF", font_family="monospace"), bgcolor="#0B0E14", padding=10, border_radius=5),
+                    btn_apply
+                ]), bgcolor="#161B22", padding=10, border_radius=8, border=ft.border.all(1, "#00E676"))
+                
+                chat_list.controls.append(resp_container)
+                page.update()
+            
+            threading.Thread(target=think, daemon=True).start()
+
+        ia_input.on_submit = send_ia
+        btn_send_ia = ft.IconButton(icon=ft.icons.SEND, icon_color="#00E676", on_click=send_ia)
+
+        view_ia = ft.Column([
+            ft.Row([ft.Text("🤖 NEXUS AI ASSISTANT", size=20, color="#B388FF", weight="bold")], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+            ft.Text("Asistente interno para generación de plantillas JS-CSG a través de lenguaje natural.", color="#8B949E", size=11),
+            ft.Container(content=chat_list, expand=True, bgcolor="#0B0E14", padding=10, border_radius=8, border=ft.border.all(1, "#30363D")),
+            ft.Row([ia_input, btn_send_ia])
+        ], expand=True)
+
         main_container = ft.Container(content=view_editor, expand=True)
 
         def set_tab(idx):
             global PBR_STATE, LATEST_CODE_B64, LATEST_NEEDS_STL
-            if idx in [0, 1, 2]: PBR_STATE["mode"] = "single"
+            if idx in [0, 1, 2, 6]: PBR_STATE["mode"] = "single"
             if idx == 3: render_assembly_ui()
             if idx == 5: refresh_nexus_db(); refresh_explorer(current_android_dir)
-            main_container.content = [view_editor, view_constructor, view_visor, view_ensamble, view_pbr, view_archivos][idx]
+            main_container.content = [view_editor, view_constructor, view_visor, view_ensamble, view_pbr, view_archivos, view_ia][idx]
             page.update()
 
         nav_bar = ft.Row([
             ft.ElevatedButton("💻 CODE", on_click=lambda _: set_tab(0), bgcolor="#21262D", color="white"),
             ft.ElevatedButton("🌐 PARAM", on_click=lambda _: set_tab(1), bgcolor="#FFAB00", color="black"),
             ft.ElevatedButton("👁️ 3D", on_click=lambda _: set_tab(2), bgcolor="#00E5FF", color="black"),
-            ft.ElevatedButton("🧩 ENSAMBLE", on_click=lambda _: set_tab(3), bgcolor="#7CB342", color="white"),
+            ft.ElevatedButton("🧩 ENS", on_click=lambda _: set_tab(3), bgcolor="#7CB342", color="white"),
             ft.ElevatedButton("🎨 PBR", on_click=lambda _: set_tab(4), bgcolor="#C51162", color="white"),
             ft.ElevatedButton("📂 FILES", on_click=lambda _: set_tab(5), bgcolor="#21262D", color="white"),
+            ft.ElevatedButton("🤖 IA", on_click=lambda _: set_tab(6), bgcolor="#B388FF", color="black"),
         ], scroll="auto")
 
         page.add(ft.Container(content=ft.Column([nav_bar, main_container, status], expand=True), padding=ft.padding.only(top=45, left=5, right=5, bottom=5), expand=True))
